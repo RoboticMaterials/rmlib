@@ -13,7 +13,8 @@ config = {
         "realsense" : True,
         "motor_control" : True,
         "ur5" : True,
-        "optoforce" : False,
+        "optoforce" : True,
+        "assembly" : True,
         "binpicking" : False
     },
     "offsets" : 
