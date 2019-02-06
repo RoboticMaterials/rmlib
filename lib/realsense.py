@@ -165,7 +165,7 @@ class RealSense:
         tmp_disp_shift = disparity_values[np.argmax(num_points)]
         self.set_disparity_shift(tmp_disp_shift)
         time.sleep(.3)
-        cloud_vg = self.voxel_grid(self.get_point_cloud(),0.007)
+        cloud_vg = self.downsample_cloud(self.get_point_cloud(),0.007)
 
         dist_est = self.get_distance_estimate(cloud_vg)
         disp_shift = int(poly(dist_est))
@@ -175,6 +175,17 @@ class RealSense:
             print("Disparity Shift: {}".format(disp_shift))
         time.sleep(.5)
         return disp_shift
+                          
+
+    def set_auto_exposure_on(self,state):      
+        self.depth_sensor.set_option(rs.option.enable_auto_exposure, state)
+       
+    def set_exposure(self,exposure):
+        self.depth_sensor.set_option(rs.option.exposure,exposure)
+        
+    def get_exposure(self):
+        #set from 1 to 165000
+        return self.depth_sensor.get_option(rs.option.exposure)
     
     def get_snapshot(self):
         self.set_laser_state(True)

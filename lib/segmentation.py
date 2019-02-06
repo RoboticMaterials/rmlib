@@ -10,15 +10,15 @@ class Segmentation:
         min_cluster_size = (obj_dims[0]*obj_dims[1]/(7.*leaf_size))*1000.
 
         if len(cloud_nt) > 0:
-            obj_clouds = self.get_object_clouds(cloud_nt,min_cluster_size=int(min_cluster_size),search_radius=search_radius)
+            obj_clouds = self.segment_cloud(cloud_nt,min_cluster_size=int(min_cluster_size),search_radius=search_radius)
         else:
             obj_clouds = None
 
         return obj_clouds
 
-    def segment_rings(self,cloud,depth,ir,ring_dims,leaf_size,tolerance,vertical=False):
+    def segment_rings_outer(self,cloud,depth,ir,ring_dims,leaf_size,tolerance,vertical=False):
 
-        cloud_vg = self.voxel_grid(cloud,0.01)
+        cloud_vg = self.downsample_cloud(cloud,0.01)
         height_est = self.get_distance_estimate(cloud_vg)
         scale = self.get_scale_for_real_to_pixel(height_est)
 
@@ -45,8 +45,44 @@ class Segmentation:
             return None
         ring_objs = []
         for mask in masks:
-            ring_obj = self.get_object_from_mask(mask,depth,ring_dims[2],vertical=vertical)
-            ring_obj_vg = self.voxel_grid(ring_obj,leaf_size)
+            ring_obj = self.get_cloud_from_mask(mask,depth,ring_dims[2],vertical=vertical)
+            ring_obj_vg = self.downsample_cloud(ring_obj,leaf_size)
+            ring_objs.append(ring_obj)        
+        if len(ring_objs) == 0:
+            ring_objs = None
+        return ring_objs
+    
+    def segment_rings_inner(self,cloud,depth,ir,ring_dims,leaf_size,tolerance,vertical=False):
+
+        cloud_vg = self.downsample_cloud(cloud,0.01)
+        height_est = self.get_distance_estimate(cloud_vg)
+        scale = self.get_scale_for_real_to_pixel(height_est)
+
+        ring_IR = int(ring_dims[0]*scale/2.0)
+        ring_OR = int(ring_dims[1]*scale/2.0)
+
+        ring_thickness = ring_OR-ring_IR
+        ring_tolerance = int(tolerance*scale)
+
+        masks = []
+        circles = cv2.HoughCircles(ir,cv2.HOUGH_GRADIENT, 1, 40, param1=15, param2=30, minRadius=ring_IR-ring_tolerance, maxRadius=ring_IR+ring_tolerance)
+        try:
+            circles = circles.reshape(-1,3)
+        except:
+            return None
+
+        for circle in circles:
+            mask = np.zeros(ir.shape)
+            circle[2] = circle[2]+int(ring_thickness/2.0)
+            cv2.circle(mask,(circle[0],circle[1]),circle[2],(255,255,255),ring_thickness)
+            masks.append(mask)
+
+        if masks is None:
+            return None
+        ring_objs = []
+        for mask in masks:
+            ring_obj = self.get_cloud_from_mask(mask,depth,ring_dims[2],vertical=vertical)
+            ring_obj_vg = self.downsample_cloud(ring_obj,leaf_size)
             ring_objs.append(ring_obj)        
         if len(ring_objs) == 0:
             ring_objs = None
@@ -72,7 +108,7 @@ class Segmentation:
 
             upward_cloud = np.array(pcd.points)[np.where(thetas>3.14-angle_tolerance)]
             if len(upward_cloud) > 0:
-                up_objs = self.get_object_clouds(upward_cloud,min_cluster_size=int(0.1/(2*leaf_size)),search_radius=search_radius)
+                up_objs = self.segment_cloud(upward_cloud,min_cluster_size=int(0.1/(2*leaf_size)),search_radius=search_radius)
                 if len(up_objs) > 0:
                     up_objs = self.sort_clouds_height(up_objs)
                     for cyl_obj in up_objs:
@@ -85,9 +121,9 @@ class Segmentation:
 
             mask[np.where(ir>60)] = 255
 
-            filtered_cloud = self.get_object_from_mask(rsc,mask,depth,cyl_dims[0],vertical=True)
-            filtered_cloud_vg = self.voxel_grid(filtered_cloud,leaf_size)
+            filtered_cloud = self.get_cloud_from_mask(rsc,mask,depth,cyl_dims[0],vertical=True)
+            filtered_cloud_vg = self.downsample_cloud(filtered_cloud,leaf_size)
 
-            cyl_objs = self.get_object_clouds(filtered_cloud_vg,leaf_size*2.5,0.05/(5.0*leaf_size))
+            cyl_objs = self.segment_cloud(filtered_cloud_vg,leaf_size*2.5,0.05/(5.0*leaf_size))
             
         return cyl_objs
