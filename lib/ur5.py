@@ -138,3 +138,26 @@ class UR5:
         transform[0:3, 0:3] = rot_matrix
         pose = self.convert_transform_to_pose(transform)
         self.movej(pose) 
+        
+    def rotate_wrist(self, z_rotation_deg):
+        """
+        Rotates the wrist joint angle by some number of degrees
+        """
+        ja = self.get_joint_angles()
+        self.set_joint_angles(np.add(ja,[0,0,0,0,0,math.radians(z_rotation_deg)]))
+        
+    def zero_wrist(self):
+        """
+        Sets the wrist joint angle to zero
+        """
+        ja = self.get_joint_angles()
+        ja[5] = 0
+        self.set_joint_angles(ja)
+        
+    def set_to_current_rotation(self, pose):
+        """
+        Sets a poses rotation matrix to the robots current rotation
+        """
+        pose[3:] = self.get_tcp_pose()[3:]
+        
+        return pose
