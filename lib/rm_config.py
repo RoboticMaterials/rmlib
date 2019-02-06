@@ -1,4 +1,4 @@
-config = {
+rm_config = {
     "robot_arm" : 
     {
         "robot_arm_type":"ur5",

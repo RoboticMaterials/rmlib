@@ -7,21 +7,21 @@ from scipy.spatial import ConvexHull
 
 class Point_Cloud_Processing:
     
-    def voxel_grid(self,cloud, leaf_size=0.005):
+    def downsample_cloud(self,cloud, leaf_size=0.005):
         """
-        Compresses cloud using voxel grid.
+        Downsample point cloud by taking mean position of points in a grid of voxels. 
 
         Parameters
         ----------
-        cloud: (n,3) ndarray
-            Sequence of points in cloud.
-        leaf_size: float
-            Leaf size of voxel grid.
+        cloud: [n,3] ndarray
+            Point cloud to be compressed.
+        leaf_size: float (optional)
+            Edge length of voxels.
 
         Return
         ------
-        cloud_vg: (k,3) ndarray
-            Sequence of points of compressed cloud.
+        downsampled_cloud: [k,3] ndarray
+            The downsampled point cloud.
         """
         if leaf_size >= 0.005:
             min_x, min_y, min_z = cloud.min(axis=0)
@@ -54,72 +54,74 @@ class Point_Cloud_Processing:
 
         return cloud_vg
 
-    def remove_planar_surface(self,cloud,remove_tolerance=0.0025,camera_transform=None):
+    def remove_planar_surface(self,cloud,remove_tolerance=0.0025):
         """
-        Removes surface or 'table' from cloud.
+        Removes points that are contained in an estimated planar surface computed with RANSAC Regression. Usefull for separating objects from the surface that they rest on. 
 
         Parameters
         ----------
-        cloud: (n,3) ndarray
-            Sequence of points in cloud.
-        remove_tolerance: float
+        cloud: [n,3] ndarray
+            Point cloud.
+        remove_tolerance: float (optional)
             Thickness tolerance for surface removal (m).
-        camera_transform: (4,4) ndarray
-            The camera transform. If local, this transform will be none and this function will generate it's best \
-            guess based on RANSAC.
+            
         Return
         ------
-        cloud_nt: (k,3) ndarray
-            Sequence of points of original cloud with points corrisponding to surface removed.
+        cloud_cleaned: [k,3] ndarray
+            Point cloud excluding the points of the estimated surface.
         """
-        surface_est = self.get_planar_surface_estimate(cloud.copy(),camera_transform)[:,2]
+        
+        surface_est = self.get_planar_surface_estimate(cloud.copy())[:,2]
         dist = cloud[:,2]-surface_est
         not_table_idxs = np.where(np.logical_and(np.abs(dist) > remove_tolerance, dist < 0.0))
         cloud_nt = cloud[not_table_idxs]
 
         return cloud_nt
 
-    def get_planar_surface_estimate(self,cloud,camera_transform=None):
+    def get_planar_surface_estimate(self,cloud):
         """
-        Gets an array of z values corrisponding to cloud mapped to the z value of the table estimate. 
+        Generates a planar cloud that follows that of a planar surface estimated with RANSAC Regression.
 
         Parameters
         ----------
-        cloud: (n,3) ndarray
-            The compressed point cloud.
-        camera_transform: (4,4) ndarray
-            The camera transform. If working on local machine, this transform will be none and this \
-            function will generate it's best guess based on RANSAC.
+        cloud: [n,3] ndarray
+            Point cloud.
 
         Returns
         -------
-        table_estimate: (n,1) ndarray
-            1d array of z values corrisponding to the cloud mapped to the z values of the estimated table.
+        plane_cloud: [n,3] ndarray
+            Planar point cloud that follows the estimated surface.
         """
 
-        if camera_transform is None:
-            x_y_coords_pts = cloud[:,:2]
-            z_coord_pts = cloud[:,-1]
+        x_y_coords_pts = cloud[:,:2]
+        z_coord_pts = cloud[:,-1]
 
-            ransac = linear_model.RANSACRegressor()
-            ransac.fit(x_y_coords_pts,z_coord_pts)
+        ransac = linear_model.RANSACRegressor()
+        ransac.fit(x_y_coords_pts,z_coord_pts)
 
-            surface_est = x_y_coords_pts.dot(ransac.estimator_.coef_) + ransac.estimator_.intercept_
-        else:
-            cloud_glob = self.transform_points(cloud,camera_transform)
-            surface_glob = np.copy(cloud_glob)
-            surface_glob[:,2] = 0.0
-
-            surface_loc = self.transform_points(surface_glob,np.linalg.inv(camera_transform))
-            surface_est = surface_loc[:,2]
+        surface_est = x_y_coords_pts.dot(ransac.estimator_.coef_) + ransac.estimator_.intercept_
 
         plane_cloud = cloud
         plane_cloud[:,2] = surface_est
 
         return plane_cloud
 
-    def get_distance_estimate(self,cloud,camera_transform=None):
-        surface_est = self.get_planar_surface_estimate(cloud,camera_transform)[:,2]
+    def get_distance_estimate(self,cloud):
+        """
+        Estimates the distance from the camera to the cloud based on RANSAC Regression.
+        
+        Parameters
+        ----------
+        cloud: [n,3] ndarray
+            Point cloud.
+            
+        Returns
+        -------
+        distance: float (m)
+            Estimated distance to the cloud.
+        """
+        
+        surface_est = self.get_planar_surface_estimate(cloud)[:,2]
         return np.average(surface_est)
 
     def sort_clouds_height(self,clouds):
@@ -128,11 +130,12 @@ class Point_Cloud_Processing:
 
         Parameters
         ----------
-        clouds: list of k (n,3) ndarrays corrisponding to clouds.
+        clouds: list of k [n,3] ndarrays
+            List of point clouds.
 
         Returns
         -------
-        sorted_clouds: list of k (n,3) ndarrays corrisponding to clouds sorted from highest to lowest maximum height.
+        sorted_clouds: list of k [n,3] ndarrays corrisponding to clouds sorted from highest to lowest maximum height.
 
         """
 
@@ -141,15 +144,15 @@ class Point_Cloud_Processing:
 
     def sort_clouds_size(self,clouds):
         """
-        Sorts clouds based on their size.
+        Sorts clouds based on the amount of points in the cloud.
 
         Parameters
         ----------
-        clouds: list of k (n,3) ndarrays corrisponding to clouds.
+        clouds: list of k [n,3] ndarrays corrisponding to clouds.
 
         Returns
         -------
-        sorted_clouds: list of k (n,3) ndarrays corrisponding to clouds sorted from largest to smallest.
+        sorted_clouds: list of k [n,3] ndarrays corrisponding to clouds sorted from largest to smallest.
 
         """
 
@@ -158,28 +161,86 @@ class Point_Cloud_Processing:
         return clouds
 
     def crop_cloud(self,cloud,box):
+        """
+        Crop cloud to be within a box.
+        
+        Parameters
+        ----------
+        cloud: [n,3] ndarray
+            Point cloud to be cropped.
+            
+        vertices: [8,3] ndarray
+            vertices of box to crop to.\n
+            [min_x,min_y,max_z]\n
+            [max_x,min_y,max_z]\n
+            [min_x,max_y,max_z]\n
+            [max_x,max_y,max_z]\n
+            [min_x,min_y,min_z]\n
+            [max_x,min_y,min_z]\n
+            [min_x,max_y,min_z]\n
+            [max_x,max_y,min_z]
+            
+        Returns
+        -------
+        cropped_cloud: [m,3] ndarray
+            Point cloud cropped to within the box.
+        """
+        
         cropped_cloud = cloud[np.where(self.is_point_in_box(box,cloud))]
     
         return cropped_cloud
 
-    def get_object_clouds(self,cloud, search_radius=0.005,min_cluster_size=100):
+    def crop_cloud_rect(self,cloud,vertices): 
         """
-        Segments cloud via DBSCAN. DBSCAN looks for points within radius to add to segmented cloud\
+        Crops points in cloud to within specified vertices. Vertices do not have to be orthagonal. \
+        Does not crop with respect to z values.
+
+        Parameters
+        ----------
+        cloud: [n,3] ndarray
+            Point cloud to be cropped.\n
+            [min_x,min_y]\n
+            [max_x,min_y]\n
+            [min_x,max_y]
+            
+        vertices: [4,2] ndarray
+            Vertices of rectangle with (x,y) positions.
+            
+        Return
+        ------
+        cropped_cloud: [m,3] ndarray
+            Cropped point cloud.
+        """
+        u = vertices[1] - vertices[0]
+        v = vertices[2] - vertices[0]
+
+        a = u.dot(cloud.T)
+        b = v.dot(cloud.T)
+
+        check_x = np.logical_and(u.dot(vertices[1]) <= a, a <= u.dot(vertices[0]))
+        check_y = np.logical_and(v.dot(vertices[2]) <= b, b <= v.dot(vertices[0]))
+
+        return cloud[np.logical_and(check_x,check_y)]
+
+    #TODO add max_cluster_size
+    def segment_cloud(self,cloud, search_radius=0.005,min_cluster_size=100):
+        """
+        Segments cloud via DBSCAN. DBSCAN is a spreading algorithm that looks for points within radius to add to segmented cloud\
         and subsequently uses that new point to spread.
 
         Parameters
         ---------
-        cloud: (n,3) ndarray
-            Sequence of points in cloud.
-        search_radius: float
-            Radius that DBSCAN uses to search.
-        min_cluster_size: int
-            Minimum amounts of points in a segment to be considered an object.
+        cloud: [n,3] ndarray
+            Point cloud.
+        search_radius: float (optional)
+            Radius that DBSCAN uses to search around current seed point.
+        min_cluster_size: int (optional)
+            Minimum amounts of points in a region to be considered an object.
 
         Returns
         -------
-        object_clouds: sequence of (m,(k,3)) arrays
-            A sequence of cloud arrays corrisponding to each object found.
+        object_clouds: list of m [k,3] ndarrays
+            A list of point cloud objects.
         """
 
         db = DBSCAN(eps=search_radius).fit(cloud)
@@ -202,25 +263,26 @@ class Point_Cloud_Processing:
 
         return objects_clouds
 
-    def get_object_from_mask(self,mask,depth,height,vertical=False):
+    def get_cloud_from_mask(self,mask,depth,height,vertical=False):
         """
         Converts a mask from an IR image to a point cloud by overlaying the image mask onto the depth image. 
 
         Parameters
         ----------
-        rsc: dev
-            Camera device.
-        mask: (720,1280) ndarray
+        mask: [720,1280] ndarray
             Mask should be zeros except for at the indeces of the desired object. 
-        depth: ndarray
-            Depth data.
+        depth: [720,1280] ndarray
+            Depth data retrieved from camera.
         height: float (m)
-            Height of object
+            Height of object.
+        vertical: bool (optional)
+            Make the object cloud surface perpendicular to the camera view, at an average object height.
 
         Returns
         -------
-        object: (n,3) ndarray
-            Cloud for object.
+        object_cloud: [n,3] ndarray
+            Point cloud of object.
+            
         """
 
         ransac = linear_model.RANSACRegressor()
@@ -255,31 +317,30 @@ class Point_Cloud_Processing:
         ring_cloud = self.convert_depth_image_to_point_cloud(ring_filled_image)
 
         return ring_cloud
-    
+        
     def get_bounding_box(self,cloud):
         """
-        Finds bounding box of object cloud.
+        Finds vertices of the bounding box of an object cloud.
 
         Parameters
         ----------
-        cloud: (n,3) ndarray
-            Sequence of points in object cloud.
+        cloud: [n,3] ndarray
+            Point cloud.
 
         Return
         ------
-        vertices: (8,3) ndarray
-            Coordinates for vertices of the object bouding box\
-            Order:\
-            [min_x,min_y,max_z]
-            [max_x,min_y,max_z]
-            [min_x,max_y,max_z]
-            [max_x,max_y,max_z]
-            [min_x,min_y,min_z]
-            [max_x,min_y,min_z]
-            [min_x,max_y,min_z]
+        vertices: [8,3] ndarray
+            Coordinates for vertices of the object bouding box.\n
+            [min_x,min_y,max_z]\n
+            [max_x,min_y,max_z]\n
+            [min_x,max_y,max_z]\n
+            [max_x,max_y,max_z]\n
+            [min_x,min_y,min_z]\n
+            [max_x,min_y,min_z]\n
+            [min_x,max_y,min_z]\n
             [max_x,max_y,min_z]
-        dimensions: (3) ndarray
-            The dimensions of the bounding box (x,y,z)
+        dimensions: [3,] ndarray
+            The dimensions of the bounding box (lenght,width,height) where length > width.
         """
 
         pca = PCA(n_components=3)
@@ -336,23 +397,26 @@ class Point_Cloud_Processing:
 
         Parameters
         ----------
-        rectangle: (4,3) ndarray
-            Corrdinates of vertices for bounding rectangle.
+        rectangle: [4,3] ndarray
+            Corrdinates of vertices for bounding rectangle.\n
+            [min_x,min_y,max_z]\n
+            [max_x,min_y,max_z]\n
+            [min_x,max_y,max_z]\n
+            [max_x,max_y,max_z]
         height: float
             Height of extrusion (m).
 
         Return
         ------
-        bounding_box: (8,3) ndarray
-            Coordinates for vertices of the object bouding box\
-            Order:\
-            [min_x,min_y,max_z]
-            [max_x,min_y,max_z]
-            [min_x,max_y,max_z]
-            [max_x,max_y,max_z]
-            [min_x,min_y,min_z]
-            [max_x,min_y,min_z]
-            [min_x,max_y,min_z]
+        bounding_box: [8,3] ndarray
+            Coordinates for vertices of the object bouding box.\n
+            [min_x,min_y,max_z]\n
+            [max_x,min_y,max_z]\n
+            [min_x,max_y,max_z]\n
+            [max_x,max_y,max_z]\n
+            [min_x,min_y,min_z]\n
+            [max_x,min_y,min_z]\n
+            [min_x,max_y,min_z]\n
             [max_x,max_y,min_z]
         """
 
@@ -370,26 +434,49 @@ class Point_Cloud_Processing:
         for i,point in enumerate(rectangle):
             vertices[i+4,:] = np.add(point,transform*height)
         return vertices
-
-    def compare_dimensions(self,object_cloud,model_dims,tolerance,transform=None,check_height=False,smaller_than=False):
+    
+    def get_cloud_dimensions(self,cloud):
         """
-        Compares the dimensions of a bounding rectangle to the dimensions os a specified \
-        object. Use for designating valid objects.
-
+        Finds the dimensions of a point cloud.
+        
         Parameters
         ----------
-        object_cloud: (n,3) ndarray
-            The point cloud of the object that is being compared.
-        model_dims: (1,3) ndarray
-            The dimensions of the ideal object [length,width,height] where length>width. \
-            Note that if any of the dimensions is set to -1 this function will ignore that dimension \
+        cloud: [n,3] ndarray
+            Point cloud object.
+            
+        Returns
+        -------
+        dimensions: [3,] ndarray
+            The dimensions of the bounding box (lenght,width,height) where length > width.
+        """
+        _,dims = self.get_bounding_box(object_cloud)
+        return dims
+            
+    def compare_dimensions(self,object_cloud,model_dims,tolerance=0.,transform=None,check_height=False,smaller_than=False):
+        """
+        Compares the dimensions of a point cloud object to specified dimensions
+        
+        Parameters
+        ----------
+        object_cloud: [n,3] ndarray
+            The point cloud of the object.
+        model_dims: [3,] ndarray
+            The dimensions of the object to be compared to [length,width,height] where length>width. \
+            Note that if any of the dimensions is set to -1 the function will ignore that dimension \
             in its comparison.
-        tolerance: float
+        tolerance: float (optional)
             Tolerance of object dimension comparison (m).
-        smaller_than: bool
+        smaller_than: bool (optional)
             If this parameter is True, this function will return true if the object cloud is \
             smaller than the model dimensions reguardless of the tolerance. (but if it is larger \
             it still must be within the tolerance)
+        transformation_matrix: [4,4]) ndarray (optional)
+            Matrix used to transform cloud before producing dimensions.\n
+            [r11,r12,r13,tx]\n
+            [r21,r22,r23,ty]\n
+            [r31,r32,r33,tz]\n
+            [ 0 , 0 , 0 , 1]
+            
         Return
         ------
         match: bool
@@ -398,7 +485,6 @@ class Point_Cloud_Processing:
 
         model_length = model_dims[0]
         model_width = model_dims[1]
-        model_height = model_dims[2]
 
         match = False
         model_asp = model_width/model_length
@@ -450,14 +536,14 @@ class Point_Cloud_Processing:
 
     def project_point_onto_line(self,x0,y0,z0,x1,y1,z1,x2,y2,z2):
         """
-        Projects point onto a vector.
+        Projects points onto a vector.
 
         Parameters
         ----------
-        x0: (n,1) array
-            X value of point.
-        y0: (n,1) array
-            Y value of point.
+        x0: [n,1] array
+            X value of points.
+        y0: [n,1] array
+            Y value of points.
         x1: float
             X value of vector start.
         y1: float
@@ -469,7 +555,7 @@ class Point_Cloud_Processing:
 
         Return
         ------
-        vector: (n,2) array
+        vector: [n,2] array
             Array of projected vectors.
 
         References
@@ -507,7 +593,7 @@ class Point_Cloud_Processing:
 
         Return
         ------
-        idxs: (1,k) ndarray
+        indices: [1,k] ndarray
             Array of indices corrisponding to valid projections.
         """
         proj = self.project_point_onto_line(x0,y0,0,x1,y1,0,x2,y2,0)
@@ -519,13 +605,13 @@ class Point_Cloud_Processing:
 
     def point_line_dist(self,x0,y0,x1,y1,x2,y2,check=False):
         """
-        Finds minimum distance from point to vector.
+        Finds minimum distance from points to vector.
 
         Parameters
         ----------
-        x0: (n,1) array
+        x0: [n,1] array
             X value of point.
-        y0: (n,1) array
+        y0: [n,1] array
             Y value of point.
         x1: float
             X value of vector start.
@@ -555,19 +641,28 @@ class Point_Cloud_Processing:
 
     def get_transform_for_CABB(self,box):
         """
-        Find the transform matrix to make a list of points center alligned (center of the box at the origin)
+        Find the transformation matrix to center allign a box (center of the box at the origin and axes alligned with principle axes).
 
         Parameters
         ---------
-        box: (8,3) ndarray
-            Vertices of the bounding box for allignment.
+        box: [8,3] ndarray
+            Vertices of the bounding box for allignment.\n
+            [min_x,min_y,max_z]\n
+            [max_x,min_y,max_z]\n
+            [min_x,max_y,max_z]\n
+            [max_x,max_y,max_z]\n
+            [min_x,min_y,min_z]\n
+            [max_x,min_y,min_z]\n
+            [min_x,max_y,min_z]\n
+            [max_x,max_y,min_z]
 
         Returns
         -------
-        trans_mat: (4,4) ndarray
-            [r11,r12,r13,tx]
-            [r21,r22,r23,ty]
-            [r31,r32,r33,tz]
+        transformation_matrix: [4,4] ndarray
+            Neccessary transformation matrix to be used to transform box.\n
+            [r11,r12,r13,tx]\n
+            [r21,r22,r23,ty]\n
+            [r31,r32,r33,tz]\n
             [ 0 , 0 , 0 , 1]
         """
 
@@ -590,15 +685,16 @@ class Point_Cloud_Processing:
 
         Parameters
         ---------
-        box: (8,3) ndarray
+        box: [8,3] ndarray
             Vertices of the bounding box for allignment.
 
         Returns
         -------
-        trans_mat: (4,4) ndarray
-            [r11,r12,r13,tx]
-            [r21,r22,r23,ty]
-            [r31,r32,r33,tz]
+        transformation_matrix: [4,4] ndarray
+            Neccessary transformation matrix to be used to transform box.\n
+            [r11,r12,r13,tx]\n
+            [r21,r22,r23,ty]\n
+            [r31,r32,r33,tz]\n
             [ 0 , 0 , 0 , 1]
         """
 
@@ -617,17 +713,18 @@ class Point_Cloud_Processing:
 
         Parameters
         ----------
-        lA: (1,3) ndarray
+        lA: [3,] ndarray
             The vector (starting at the origin) that you want to rotate.
-        lB: (1,3) ndarray
+        lB: [3,] ndarray
             The vector (starting at the origin) that you want to allign to.
 
         Returns
         -------
-        trans_mat: (4,4) ndarray
-            [r11,r12,r13,tx]
-            [r21,r22,r23,ty]
-            [r31,r32,r33,tz]
+        transformation_matrix: [4,4] ndarray
+            Neccessary transformation matrix for line.\n
+            [r11,r12,r13,tx]\n
+            [r21,r22,r23,ty]\n
+            [r31,r32,r33,tz]\n
             [ 0 , 0 , 0 , 1]
         """
 
@@ -655,10 +752,19 @@ class Point_Cloud_Processing:
 
         Parameters
         ----------
-        A: (8,3) ndarray
-            The vertices for the first box.
-        B: (8,3) ndarray
-            The vertices for the second box.
+        A: [8,3] ndarray
+            The vertices for the first box.\n
+            [min_x,min_y,max_z]\n
+            [max_x,min_y,max_z]\n
+            [min_x,max_y,max_z]\n
+            [max_x,max_y,max_z]\n
+            [min_x,min_y,min_z]\n
+            [max_x,min_y,min_z]\n
+            [min_x,max_y,min_z]\n
+            [max_x,max_y,min_z]
+        B: [8,3] ndarray
+            The vertices for the second box.\n
+            Order same as A.
 
         Returns
         -------
@@ -794,14 +900,22 @@ class Point_Cloud_Processing:
 
         Parameters
         ----------
-        box: (8,3) ndarray
-            Coordinates for vertices of box.
-        point: (n,3) ndarray
+        box: [8,3] ndarray
+            Vertices of box.\n
+            [min_x,min_y,max_z]\n
+            [max_x,min_y,max_z]\n
+            [min_x,max_y,max_z]\n
+            [max_x,max_y,max_z]\n
+            [min_x,min_y,min_z]\n
+            [max_x,min_y,min_z]\n
+            [min_x,max_y,min_z]\n
+            [max_x,max_y,min_z]
+        point: [n,3] ndarray
             Coordinates of points.
 
         Return
         ------
-        collision: (n) ndarray of booleans
+        collision: [n,] ndarray of booleans
             True if the point is within the box.
         """
 
@@ -813,8 +927,4 @@ class Point_Cloud_Processing:
         y_check = np.logical_and(AA_point[:,1] >= AABB[:,1].min(), AA_point[:,1] <= AABB[:,1].max())
         z_check = np.logical_and(AA_point[:,2] >= AABB[:,2].min(), AA_point[:,2] <= AABB[:,2].max())
 
-
         return np.logical_and(x_check,np.logical_and(y_check,z_check))
-
-
-

@@ -302,5 +302,12 @@ class Transforms:
                         ])
         R = np.dot(R_z, np.dot( R_y, R_x ))
         return R
-    
+
+    #Convert pixles to space
+    def pxls_to_spc(self, pxls_dist, z_cam):
+        return ( pxls_dist / 1280) * z_cam * math.tan(math.radians(69.4/2)) * 2
+
+    #Convert space to pixles
+    def spc_to_pxls(self, spc_dist, z_cam):
+        return spc_dist * 1280 / (z_cam * math.tan(math.radians(69.4/2)) * 2)
     
