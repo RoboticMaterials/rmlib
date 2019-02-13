@@ -9,9 +9,9 @@ import socket
 import time
 import json
 
-from config import config 
+from rm_config import rm_config 
 
-robot_arm_ip = config["robot_arm"]["robot_arm_ip"]
+robot_arm_ip = rm_config["robot_arm"]["robot_arm_ip"]
 ip = ni.ifaddresses('eth0')[ni.AF_INET][0]['addr']
 
 class RequestHandler(SimpleXMLRPCRequestHandler):
