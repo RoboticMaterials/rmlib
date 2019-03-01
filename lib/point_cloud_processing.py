@@ -1,9 +1,11 @@
 import numpy as np
 import open3d 
 from sklearn import linear_model
-from sklearn.cluster import DBSCAN
 from sklearn.decomposition import PCA
 from scipy.spatial import ConvexHull
+
+from pyntcloud import PyntCloud #NOT FOR OPEN SOURCE
+import pandas as pd #NOT FOR OPEN SOURCE
 
 class Point_Cloud_Processing:
     
@@ -221,102 +223,54 @@ class Point_Cloud_Processing:
         check_y = np.logical_and(v.dot(vertices[2]) <= b, b <= v.dot(vertices[0]))
 
         return cloud[np.logical_and(check_x,check_y)]
-
-    #TODO add max_cluster_size
-    def segment_cloud(self,cloud, search_radius=0.005,min_cluster_size=100):
+    
+    
+    def get_bounding_rect(cloud):
         """
-        Segments cloud via DBSCAN. DBSCAN is a spreading algorithm that looks for points within radius to add to segmented cloud\
-        and subsequently uses that new point to spread.
-
-        Parameters
-        ---------
-        cloud: [n,3] ndarray
-            Point cloud.
-        search_radius: float (optional)
-            Radius that DBSCAN uses to search around current seed point.
-        min_cluster_size: int (optional)
-            Minimum amounts of points in a region to be considered an object.
-
-        Returns
-        -------
-        object_clouds: list of m [k,3] ndarrays
-            A list of point cloud objects.
-        """
-
-        db = DBSCAN(eps=search_radius).fit(cloud)
-
-        objects_ids = np.unique(db.labels_)
-        num_objects = objects_ids.shape[0]
-
-        if objects_ids[0] == -1:
-            cloud = cloud[np.where(db.labels_ != -1)]
-            db.labels_ = db.labels_[np.where(db.labels_ != -1)] 
-
-        objects_clouds = []
-        for i in objects_ids:
-            object_idxs = np.where(db.labels_ == i)
-            if len(object_idxs[0]) < min_cluster_size:
-                cloud = cloud[np.where(db.labels_ != i)]
-                db.labels_ = db.labels_[np.where(db.labels_ != i)]
-            else:
-                objects_clouds.append(cloud[object_idxs])
-
-        return objects_clouds
-
-    def get_cloud_from_mask(self,mask,depth,height,vertical=False):
-        """
-        Converts a mask from an IR image to a point cloud by overlaying the image mask onto the depth image. 
+        Finds bounding rectangle of object cloud. Rectangle sits tangent to highest point on cloud.
 
         Parameters
         ----------
-        mask: [720,1280] ndarray
-            Mask should be zeros except for at the indeces of the desired object. 
-        depth: [720,1280] ndarray
-            Depth data retrieved from camera.
-        height: float (m)
-            Height of object.
-        vertical: bool (optional)
-            Make the object cloud surface perpendicular to the camera view, at an average object height.
+        cloud: (n,3) ndarray
+            Sequence of points in object cloud.
 
-        Returns
-        -------
-        object_cloud: [n,3] ndarray
-            Point cloud of object.
-            
+        Return
+        ------
+        vertices: (4,3) ndarray
+            Coordinates for vertices of the object bouding rectangle\
+            Order:\
+            [min_x,min_y,z1]
+            [max_x,min_y,z2]
+            [min_x,max_y,z3]
+            [max_x,max_y,z4]
         """
 
-        ransac = linear_model.RANSACRegressor()
+        pca = PCA(n_components=3)
+        pca_cloud = pca.fit_transform(cloud)
+        hull = ConvexHull(pca_cloud[:,:2])
 
-        ring_depth_idxs = np.where(np.logical_and((mask!=0),(depth!=0.0)))
-        ring_mask_idxs = np.where(mask!=0.0)
-
-        offset = False
-
-        X = np.vstack(ring_depth_idxs).T
-        X2 = np.vstack(ring_mask_idxs).T
-        y = depth[ring_depth_idxs]
-        if len(y)<500:
-            depth_idxs = np.where(depth!=0)
-            perm = np.random.permutation(int((np.vstack(depth_idxs).shape)[1]/4))
-            X = (np.vstack(depth_idxs).T)[perm]
-            y = (depth[depth_idxs].T - height*1000)[perm]
-            offset = True
-
-        if vertical:
-            y2 = int(np.average(y))
-        else:
-            ransac.fit(X,y)
-            y2 = ransac.predict(X2)
-
-        if offset:
-            y2 -= height * 10000
-
-        ring_filled_image = np.zeros(mask.shape)
-        ring_filled_image[ring_mask_idxs] = y2
-
-        ring_cloud = self.convert_depth_image_to_point_cloud(ring_filled_image)
-
-        return ring_cloud
+        volume_bb = 10000000
+        for simplex in hull.simplices:
+            u = pca_cloud[simplex[0],:2]
+            v = pca_cloud[simplex[1],:2]
+            slope = (v[1] - u[1])/(v[0] - u[0])
+            theta = np.arctan(slope)
+            rot = np.array([[np.cos(theta), -np.sin(theta),0.0],[np.sin(theta), np.cos(theta),0.0],[0.0,0.0,1.0]])
+            pc = pca_cloud.dot(rot)
+            min_x = pc[:,0].min()
+            max_x = pc[:,0].max()
+            min_y = pc[:,1].min()
+            max_y = pc[:,1].max()
+            vol = np.abs(min_x-max_x)*np.abs(min_y-max_y)
+            if vol < volume_bb:
+                vertices = np.zeros((8,3))
+                vertices[0,:] = [min_x,min_y,0]
+                vertices[1,:] = [max_x,min_y,0]
+                vertices[2,:] = [min_x,max_y,0]
+                vertices[3,:] = [max_x,max_y,0]
+                vertices = vertices.dot(np.linalg.inv(rot))
+                volume_bb = vol
+        return pca.inverse_transform(vertices)
         
     def get_bounding_box(self,cloud):
         """
@@ -928,3 +882,7 @@ class Point_Cloud_Processing:
         z_check = np.logical_and(AA_point[:,2] >= AABB[:,2].min(), AA_point[:,2] <= AABB[:,2].max())
 
         return np.logical_and(x_check,np.logical_and(y_check,z_check))
+
+
+
+

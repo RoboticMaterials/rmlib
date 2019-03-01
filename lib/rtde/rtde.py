@@ -27,7 +27,7 @@ import select
 import sys
 import logging
 
-from . import serialize
+import serialize
 
 DEFAULT_TIMEOUT = 1.0
 

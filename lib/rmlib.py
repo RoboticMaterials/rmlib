@@ -1,4 +1,8 @@
-#Import and assign rm_config 
+#System path for use in dev_rmstudio only
+import sys
+sys.path.append('/home/nvidia/rm/rmstudio_dev')
+
+#Import and assign rm_config file
 from rm_config import rm_config
 
 import_ur5 = rm_config["imports"]["ur5"]
@@ -42,18 +46,31 @@ if import_binpicking:
     from binpicking import BinPicking
     inheritance_list.append(BinPicking)
 
+#Build RMLib Class
 class RMLib(*inheritance_list):
         
     def __init__(self,output=0):  
         self.finger_offset = rm_config['offsets']['finger_offset']
-        self.camera_offset = [0.0375, 0.032,-0.079-self.finger_offset,0.0,0.0,0.0]
         
-        self.robot_arm_ip = rm_config['robot_arm']['robot_arm_ip']         
+        self.camera_offset = [0.037, 0.033,-0.079-self.finger_offset,0.0,0.0,0.0] #TELL AUSTIN IF YOU CHANGE THIS VALUE!!! CALIBRATED 2/27/19
+         
         self.force_sensor_ip = rm_config['force_sensor']['force_sensor_ip']
                     
         if import_ur5:
-            UR5.__init__(self)
+            self.robot_arm_ip = rm_config['robot_arm']['robot_arm_ip'] 
             
+            self.arm_max_linear_speed = rm_config['robot_arm']['max_linear_speed']
+            self.arm_max_linear_accel = rm_config['robot_arm']['max_linear_accel']
+            self.arm_max_joint_speed = rm_config['robot_arm']['max_joint_speed']
+            self.arm_max_joint_accel = rm_config['robot_arm']['max_joint_accel']
+            
+            self.arm_default_linear_speed = rm_config['robot_arm']['default_linear_speed']
+            self.arm_default_linear_accel = rm_config['robot_arm']['default_linear_accel']
+            self.arm_default_joint_speed = rm_config['robot_arm']['default_joint_speed']
+            self.arm_default_joint_accel = rm_config['robot_arm']['default_joint_accel']
+            
+            UR5.__init__(self)
+
         if import_realsense:
             RealSense.__init__(self)
             
@@ -73,6 +90,4 @@ class RMLib(*inheritance_list):
         
     def printb(self,string):
         print("\x1b[34m{}\x1b[0m".format(string))
-
-
 
