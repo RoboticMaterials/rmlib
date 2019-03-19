@@ -1,7 +1,3 @@
-#System path for use in dev_rmstudio only
-import sys
-sys.path.append('/home/nvidia/rm/rmstudio_dev')
-
 #Import and assign rm_config file
 from rm_config import rm_config
 

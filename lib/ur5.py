@@ -9,7 +9,7 @@ import math
 class UR5:
     def __init__(self):
         #run rtde server in pyhton 2
-        subprocess.call("/home/nvidia/dev_rmstudio/lib/rtde/run_ur5_rtde.sh")
+        subprocess.call("/home/nvidia/rmstudio/lib/rtde/run_ur5_rtde.sh")
         
         #connect to rtde server as xmlrpc client
         ip = ni.ifaddresses('eth0')[ni.AF_INET][0]['addr']

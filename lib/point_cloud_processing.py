@@ -4,9 +4,6 @@ from sklearn import linear_model
 from sklearn.decomposition import PCA
 from scipy.spatial import ConvexHull
 
-from pyntcloud import PyntCloud #NOT FOR OPEN SOURCE
-import pandas as pd #NOT FOR OPEN SOURCE
-
 class Point_Cloud_Processing:
     
     def downsample_cloud(self,cloud, leaf_size=0.005):
