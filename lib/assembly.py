@@ -33,6 +33,7 @@ class Assembly:
         for i in range(max_loops): 
             #Get ir image 
             ir_image = self.get_ir_image()
+            ir_image = cv2.cvtColor(ir_image, cv2.COLOR_BGR2GRAY)
 
             #Blur image to reduce false positives 
             if image_blur > 0:
@@ -73,6 +74,7 @@ class Assembly:
             
             #Get ir image 
             ir_image = self.get_ir_image()
+            ir_image = cv2.cvtColor(ir_image, cv2.COLOR_BGR2GRAY)
 
             #Blur image to reduce false positives 
             if circle_locator_params[5] > 0:
@@ -133,7 +135,7 @@ class Assembly:
                 [x_dist_px, y_dist_px] = np.subtract(chosen_circle[:2],image_center)
                 x_dist_sp = self.pxls_to_spc(x_dist_px, circle_locator_params[6])
                 y_dist_sp = self.pxls_to_spc(y_dist_px, circle_locator_params[6])
-                self.movel([-x_dist_sp,-y_dist_sp,0,0,0,0],frame="tool",speed=0.2,acceleration=0.2)
+                self.movel([-x_dist_sp,-y_dist_sp,0,0,0,0],frame="tool",speed=0.2,accel=0.2)
                 
                 if(output):
                     plt.figure(figsize=(20,20))
@@ -149,14 +151,14 @@ class Assembly:
         self.circle_locator(circle_locator_params=feature['circle_locator_params'], max_movement = max__center_movement, output=output)
         return self.pose_trans(self.get_tcp_pose(),[self.camera_offset[0],self.camera_offset[1],feature['view_distance'],0,0,0])
     
-    def tune_cloud_locator(self, disparity_shift=150, leaf_size=0.001, search_radius=0.0033, min_cluster_size=50):
+    def tune_cloud_locator(self, disparity_shift=150, leaf_size=0.001, search_radius=0.0033, min_cluster_size=50, max_cluster_size=10000000):
         self.set_disparity_shift(disparity_shift)
         cloud = self.get_point_cloud()
         cloud_vg = self.downsample_cloud(cloud,leaf_size=leaf_size)
         cloud_vg_nt = self.remove_planar_surface(cloud_vg)
 
         # Segment objects with spreading segmentation algorithm.
-        object_clouds = self.segment_cloud(cloud_vg_nt,search_radius=search_radius, min_cluster_size=min_cluster_size )
+        object_clouds = self.segment_cloud(cloud_vg_nt,search_radius=search_radius, min_cluster_size=min_cluster_size, max_cluster_size=max_cluster_size )
        
         # Sort object clouds by height.
         object_clouds_sorted = self.sort_clouds_height(object_clouds)
@@ -177,7 +179,7 @@ class Assembly:
             view.add_cloud(object_cloud,colorize=True)
         view.add_axis(object_transform)
         view.show()
-        return [disparity_shift, leaf_size, search_radius, min_cluster_size]
+        return [disparity_shift, leaf_size, search_radius, min_cluster_size, max_cluster_size]
     
     def refine_cloud_location(self, feature, output=False):
         #Move to view point
@@ -191,7 +193,8 @@ class Assembly:
         cloud_vg_nt = self.remove_planar_surface(cloud_vg)
 
         #Segment objects with spreading segmentation algorithm.
-        object_clouds = self.segment_cloud(cloud_vg_nt,search_radius=feature["cloud_locator_params"][2],min_cluster_size=feature["cloud_locator_params"][3])
+        object_clouds = self.segment_cloud(cloud_vg_nt,search_radius=feature["cloud_locator_params"][2],
+                                           min_cluster_size=feature["cloud_locator_params"][3],max_cluster_size=feature["cloud_locator_params"][4])
 
         # Sort object clouds by height.
         object_clouds_sorted = self.sort_clouds_height(object_clouds)
@@ -222,11 +225,11 @@ class Assembly:
     
     def pick_part(self, part_location, start_dist, finger_width=0.108, offset=0):
         #Pick part
-        self.movej(np.add(part_location,[0,0,offset,0,0,0]))
+        self.movej(np.add(part_location,[0,0,offset,0,0,0]),speed_per=0.5)
         self.set_gripper_width(finger_width)
         pick_pose = self.get_tcp_pose()
         pick_pose[2] = part_location[2] - offset
-        self.movel(pick_pose)
+        self.movel(pick_pose, speed_per=0.5)
         self.close_gripper()
         self.movej([0,0,-start_dist,0,0,0],frame="tool")
 
@@ -253,7 +256,7 @@ class Assembly:
         self.movel(np.add(self.get_tcp_pose(),[0.0,0.0,-max_movement,0.0,0.0,0.0]),speed=0.01,stop_condition=a)
         
         #Rotate back to vertical
-        self.movel([(x_offset+dia/4),0,0,0,-math.radians(tilt_angle),0],speed=0.05,frame="tool") 
+        self.movel([(x_offset+dia/4),0,0.002,0,-math.radians(tilt_angle),0],speed=0.05,frame="tool") 
 
         #Complete insertion
         def a():
@@ -289,7 +292,7 @@ class Assembly:
             else:
                 return 0
 
-        self.spiral(15,0,stepSize=0.00001,maxRadius=0.004,speed=.002,acceleration=0.5,stop_condition=b)
+        self.spiral(15,0,stepSize=0.00001,maxRadius=0.004,speed=.002,accel=0.5,stop_condition=b)
 
         #Move down till contact
         def a():

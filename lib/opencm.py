@@ -9,15 +9,14 @@ class OpenCM:
         
         #init serial connection
         port = "/dev/opencm"
-        baudrate = 9600
         timeout = 3
-        self.ser = serial.Serial(port=port,baudrate=baudrate,timeout=timeout)
+        self.ser = serial.Serial(port=port,timeout=timeout)
         self.ser.close()
         self.ser.open()
         
-#######################
+#======================
 #Gripper Setup Commands
-#######################
+#======================
     
     def activate_gripper(self):
         self.ser.flushInput()
@@ -35,9 +34,9 @@ class OpenCM:
         time.sleep(15)
         return 1
     
-#####################
+#====================
 #Gripper Set Commands
-#####################
+#====================
     
     def open_gripper(self):
         """
@@ -45,8 +44,10 @@ class OpenCM:
         
         Return
         ------
-        Success: bool
+        success: bool
+            If the gripper opens completely, success is True.
         """
+        
         self.ser.flushInput()
         self.ser.write('o\r'.encode())
         return int(self.ser.readline().decode())
@@ -60,6 +61,7 @@ class OpenCM:
         success: bool
             If the gripper closes completely, success is False, else success is True.
         """
+        
         self.ser.flushInput()
         self.ser.write('c\r'.encode())
         return int(self.ser.readline().decode())
@@ -72,12 +74,13 @@ class OpenCM:
         Parameters
         ----------
         torque: int
-            Torque value between 0 and 200.
+            Torque value between 0 and 1.
             
         Return 
         ------
         1
         """
+        torque = torque*self.MAX_TORQUE
         if  torque > self.MAX_TORQUE: 
             torque = self.MAX_TORQUE
         elif torque < 0:
@@ -92,12 +95,13 @@ class OpenCM:
         Parameters
         ----------
         torque: int
-            Torque value between 0 and 200.
+            Torque value between 0 and 1.
             
         Return 
         ------
         1
         """
+        torque = torque*self.MAX_TORQUE
         if  torque > self.MAX_TORQUE: 
             torque = self.MAX_TORQUE
         elif torque < 0:
@@ -113,12 +117,13 @@ class OpenCM:
         Parameters
         ----------
         torque: int
-            Torque value between 0 and 200.
+            Torque value between 0 and 1.
             
         Return 
         ------
         1
         """
+        torque = torque*self.MAX_TORQUE
         if  torque > self.MAX_TORQUE: 
             torque = self.MAX_TORQUE
         elif torque < 0:
@@ -127,27 +132,46 @@ class OpenCM:
         self.ser.write(('({}\r'.format(torque)).encode())
         return 1
 
-    def set_gripper_width(self,width):
+    def set_gripper_width(self,width,width2=None):
         """
         Set width between fingers.
         
         Parameters 
         ----------
         width: float
-            Width to be set (m).
+            If only 1 argument is passed, this width is the width between fingers (m). \
+            If 2 arguments are passed, this is the distance from the right finger to 0.
+        width2: float (optional)
+            If this argument is passed, this will be the distance from the right finger to 0. (m)
             
         Return
         ------
         Success: bool
         """
+        
         width = int(float(width) * 1000.0)
         if width > self.MAX_WIDTH:
             width = self.MAX_WIDTH
         elif width < 0:
             width = 0
+            
+        if width2 is not None:
+            width2 = int(float(width2) * 1000.0)
+            if width2 > self.MAX_WIDTH:
+                width2 = self.MAX_WIDTH
+            elif width2 < -self.MAX_WIDTH:
+                width2 = -self.MAX_WIDTH
+
         self.ser.flushInput()
-        self.ser.write(('w{}\r'.format(width)).encode())
-        return int(self.ser.readline().decode()[0])
+        if width2 is not None:
+            self.ser.write(('w{:03d},{:03d}\r'.format(width,width2)).encode())
+        else:
+            self.ser.write(('w{:03d}\r'.format(width)).encode())
+            
+        try:
+            return int(self.ser.readline().decode()[0])
+        except Exception:
+            return 1
 
     def set_gripper_width_right(self,width):
         """
@@ -163,10 +187,10 @@ class OpenCM:
         Success: bool
         """
         width = int(float(width) * 2000.0)
-        if width > 2*self.MAX_WIDTH:
-            width = 2*self.MAX_WIDTH
-        elif width < 0:
-            width = 0
+        if width > self.MAX_WIDTH:
+            width = self.MAX_WIDTH
+        elif width < -self.MAX_WIDTH:
+            width = -self.MAX_WIDTH
         self.ser.write(('>{}\r'.format(width)).encode())
         return int(self.ser.readline().decode()[0])
 
@@ -185,12 +209,46 @@ class OpenCM:
         Success: bool
         """
         width = int(float(width) * 2000.0)
-        if width > 2*self.MAX_WIDTH:
-            width = 2*self.MAX_WIDTH
-        elif width < 0:
-            width = 0
+        if width > self.MAX_WIDTH:
+            width = self.MAX_WIDTH
+        elif width < -self.MAX_WIDTH:
+            width = -self.MAX_WIDTH
         self.ser.flushInput()
         self.ser.write(('<{}\r'.format(width)).encode())
+        return int(self.ser.readline().decode()[0])
+    
+    def set_finger_positions(self,widthL,widthR):
+        """
+        Set width between right finger and 0, and left finger and 0.
+        
+        Parameters 
+        ----------
+        widthL: float
+            Width of left finger relative to 0 (m).
+            
+        widthR: float
+            Width of right finger relative to 0 (m).
+            
+            
+        Return
+        ------
+        Success: bool
+        """
+            
+        widthL = int(float(widthL) * 2000.0)
+        if widthL > self.MAX_WIDTH:
+            widthL = self.MAX_WIDTH
+        elif widthL < -self.MAX_WIDTH:
+            widthL = -self.MAX_WIDTH
+            
+        widthR = int(float(widthR) * 2000.0)
+        if widthR > self.MAX_WIDTH:
+            widthR = self.MAX_WIDTH
+        elif widthR < -self.MAX_WIDTH:
+            widthR = -self.MAX_WIDTH
+            
+        self.ser.flushInput()
+        
         return int(self.ser.readline().decode()[0])
 
     def set_min_object_size(self,object_size):
@@ -258,9 +316,9 @@ class OpenCM:
         return int(self.ser.readline().decode()[0])
 
 
-#####################
+#====================
 #Get Gripper Commands
-#####################
+#====================
     
     def get_software_version(self):
         """
@@ -284,18 +342,44 @@ class OpenCM:
         width: float
             Current width of fingers (m).
         """
-        for i in range(20):
-            self.ser.flushInput()
-            self.ser.write('W\r'.encode())
-            try:
-                width = int(self.ser.readline().decode()[:-2])
-                width /= 1000
-                break
-            except:
-                pass
+        self.ser.flushInput()
+        self.ser.write('W\r'.encode())
+        width = int(self.ser.readline().decode()[:-2])
+        width /= 1000
+        return width
+    
+    def get_gripper_width_right(self):
+        """
+        Gets the width between gripper finger and 0 position.
+        
+        Return
+        ------
+        width: float
+            Current width of finger (m).
+        """
+        self.ser.flushInput()
+        self.ser.write('R\r'.encode())
+        width = int(self.ser.readline().decode()[:-2])
+        width /= 1000
+        return width
+    
+    def get_gripper_width_left(self):
+        """
+        Gets the width between gripper finger and 0 position.
+        
+        Return
+        ------
+        width: float
+            Current width of finger (m).
+        """
+        self.ser.flushInput()
+        self.ser.write('L\r'.encode())
+        width = int(self.ser.readline().decode()[:-2])
+        width /= 1000
         return width
 
     def get_motor_temperature(self):
         self.ser.flushInput()
         self.ser.write('T\r'.encode())
         return self.ser.readline().decode()[:-2]
+

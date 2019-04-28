@@ -12,12 +12,28 @@ class OptoForce:
         self.init_force_sensor()
 
     def get_wrist_force(self):
+        """
+        Retrieves the force and torque vector from the OptoForce.
+        
+        Returns
+        -------
+        force_torque_vector: [6,] list
+            The first 3 elements desribe the force along each axis, and the second \
+            3 describe the torque about each axis.\n
+            [Fx, Fy, Fz, Tx, Ty, Tz]
+        """
+        
         message = bytes(2) + b'\x02\x02' + bytes(72) 
         self.rti.send(message)
         data = self.rti.recv(58)
         return list(struct.unpack('!6f',data[-24:]))
 
-    def bias_wrist_force(self): 
+    def bias_wrist_force(self):
+        """
+        Bias the wrist forces. Call this before expecting a force, so the \
+        force sensor is properly calibrated for the gripper's current orientation. 
+        """
+        
         msg = dict()
         msg["message_id"] = ""
         msg["command"] = dict()
@@ -53,6 +69,7 @@ class OptoForce:
         msg = (json.dumps(msg) + "\r\n\r\n").encode()
         self.ci.send(msg)
         data = self.ci.recv(1024)
+        self.get_wrist_force()
         return 
     
 

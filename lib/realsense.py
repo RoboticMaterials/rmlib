@@ -21,7 +21,6 @@ class RealSense:
         for dev in devices:
             if dev.supports(rs.camera_info.product_id) and str(dev.get_info(rs.camera_info.product_id)) in DS5_product_ids:
                 if dev.supports(rs.camera_info.name):
-                    #print("Found device that supports advanced mode:", dev.get_info(rs.camera_info.name))
                     pass
                 return dev
         raise Exception("No device that supports advanced mode was found")
@@ -34,8 +33,6 @@ class RealSense:
         ----------
         visual_preset: int (1-4)
             The 4 visual presets can be viewer on the realsense viewer.
-        laser_on: bool
-            Toggles laser projector. In some cases turning the laser off can be helpful with shiny objects. 
         """
                 
         dev = self.find_device_that_supports_advanced_mode()
@@ -48,9 +45,13 @@ class RealSense:
         
         config = rs.config()
         config.enable_stream(rs.stream.depth,x_res,y_res,rs.format.z16,frame_rate)
-        config.enable_stream(rs.stream.infrared,x_res,y_res,rs.format.y8,frame_rate)
+        config.enable_stream(rs.stream.infrared,x_res,y_res,rs.format.rgb8,frame_rate)
         self.depth_sensor.set_option(rs.option.visual_preset, visual_preset)
-        profile = self.pipe.start(config)
+        try:
+            profile = self.pipe.start(config)
+        except RuntimeError as rte:
+            if 'Device or resource busy' in str(rte):
+                raise RuntimeError("Camera in use by another Notebook")
         video_stream_profile = profile.get_stream(rs.stream.depth).as_video_stream_profile()
         intrinsics = video_stream_profile.get_intrinsics()
         self.fx = intrinsics.fx
@@ -84,11 +85,13 @@ class RealSense:
             True for turning the laser on. 
         """
         
-        if self.depth_sensor.supports(rs.option.laser_power):
+        if self.depth_sensor.supports(rs.option.emitter_enabled):
             if state==False:
-                self.depth_sensor.set_option(rs.option.laser_power,0.0)
+                self.depth_sensor.set_option(rs.option.emitter_enabled,0.0)
             else:
-                self.depth_sensor.set_option(rs.option.laser_power,150.0)
+                self.depth_sensor.set_option(rs.option.emitter_enabled,1.0)
+        else:
+            print('Error setting laser state')
         time.sleep(0.5)
     
     def set_laser_power(self,power):
@@ -100,10 +103,29 @@ class RealSense:
         power: float
             laser power
         """
-        
+        if power > 1 or power < 0:
+            raise RuntimeError("Set laser power from 0-1")
+        power = power*150
         if self.depth_sensor.supports(rs.option.laser_power):
             self.depth_sensor.set_option(rs.option.laser_power,power)
-        time.sleep(0.1)
+        else:
+            print("Error setting laser power")
+        time.sleep(0.5)
+   
+    def get_laser_state(self):
+        if self.depth_sensor.supports(rs.option.emitter_enabled):
+            state = self.depth_sensor.get_option(rs.option.emitter_enabled)
+        else:
+            print("Error getting laser state")
+        return state
+    
+    def get_laser_power(self):
+        if self.depth_sensor.supports(rs.option.laser_power):
+            power = self.depth_sensor.get_option(rs.option.laser_power)
+            power = power/150
+        else:
+            print("Error getting laser power")
+        return power
         
     def set_disparity_shift(self,disparity_value):
         depth_table = self.camera_controller.get_depth_table()
@@ -181,10 +203,10 @@ class RealSense:
         self.depth_sensor.set_option(rs.option.enable_auto_exposure, state)
        
     def set_exposure(self,exposure):
+        #set from 1 to 165000
         self.depth_sensor.set_option(rs.option.exposure,exposure)
         
     def get_exposure(self):
-        #set from 1 to 165000
         return self.depth_sensor.get_option(rs.option.exposure)
     
     def get_snapshot(self):
@@ -221,7 +243,6 @@ class RealSense:
         self.set_laser_state(True)
         frames = self.pipe.wait_for_frames()
         depth = frames.get_depth_frame()
-        depth = self.temporal_filter.process(depth)
         
         points = self.pc.calculate(depth)
 
@@ -236,7 +257,6 @@ class RealSense:
         self.set_laser_state(True)
         frames = self.pipe.wait_for_frames()
         depth = frames.get_depth_frame()
-        depth = self.temporal_filter.process(depth)
         
         depth_data = depth.get_data()
         self.set_laser_state(False)

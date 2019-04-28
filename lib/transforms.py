@@ -11,10 +11,12 @@ class Transforms:
 
         Parameters
         ----------
-        pose_1: (1,6) ndarray
-            First pose vector to be added relative to second pose. 
-        pose_2: (1,6) ndarray
-            Second pose vector
+        pose_1: [6,] list
+            First pose vector to be added relative to second pose. \n
+            [x, y, z, rX, rY, rZ]
+        pose_2: [6,] list
+            Second pose vector\n
+            [x, y, z, rX, rY, rZ]
         """
 
         transform_1 = self.convert_pose_to_transform(pose_1)
@@ -28,13 +30,18 @@ class Transforms:
 
         Parameters
         ----------
-        pose: (1,6) ndarray
-            Pose vector.
+        pose: [6,] list
+            Pose vector.\n
+            [x, y, z, rX, rY, rZ]
 
         Returns
         -------
-        transform :(4,4) ndarray
-            Transformation matrix.
+        transform : [4,4] ndarray
+            Transformation matrix.\n
+            [r11,r12,r13,tx]\n
+            [r21,r22,r23,ty]\n
+            [r31,r32,r33,tz]\n
+            [ 0 , 0 , 0 , 1]
         """
         x, y, z, rx, ry, rz = pose
         theta = np.sqrt(np.square(rx) + np.square(ry) + np.square(rz))
@@ -66,26 +73,30 @@ class Transforms:
 
         return transform
 
-    def convert_transform_to_pose(self,transform,x_offset=0.0,y_offset=0.0,z_offset=0.0,is_object=False,bound=False):
+    def convert_transform_to_pose(self,transform,x_offset=0.0,y_offset=0.0,z_offset=0.0):
         """
         Converts a pose vector to a transformation matrix.
 
         Parameters
         ----------
-        transform :(4,4) ndarray
-            Transformation matrix.
-        x_offset/y_offset/z_offset: float
-            The offsets from the position if neccessary.
-        is_object: bool
-            Rotates 90 degrees from principal axis to pick up object.
-        bound: bool
-            If True, bound will restrict the gripper from rotating too far. If you care about the orientation \
-            of the object, set bound to False. 
+        transform : [4,4] ndarray
+            Transformation matrix.\n
+            [r11,r12,r13,tx]\n
+            [r21,r22,r23,ty]\n
+            [r31,r32,r33,tz]\n
+            [ 0 , 0 , 0 , 1]
+        x_offset: float
+            Offset in the X direction relative to the transform.
+        y_offset: float
+            Offset in the Y direction relative to the transform.
+        z_offset: float
+            Offset in the Z direction relative to the transform.
 
         Returns
         -------
-        pose: (1,6) ndarray
-            Pose vector.
+        pose: [6,] list
+            Pose vector.\n
+            [x, y, z, rX, rY, rZ]
         """
         r11 = transform[0,0]
         r12 = transform[0,1]
@@ -115,14 +126,6 @@ class Transforms:
         rv2 = theta*ky
         rv3 = theta*kz
 
-        if is_object:
-            rv3 = rv3 + 1.5708
-            if bound:
-                if rv3 > 1.5708:
-                    rv3 -= 3.14159
-                elif rv3 < -1.5708:
-                    rv3 += 3.14159
-
         x = transform[0,-1] 
         y = transform[1,-1] 
         z = transform[2,-1] 
@@ -130,32 +133,122 @@ class Transforms:
         return [float(x+x_offset),float(y+y_offset),float(z+z_offset),float(rv1),float(rv2),float(rv3)]
 
     def transform_points(self,points,transform):
+        """
+        Transform points by a transformation matrix.
+        
+        Parameters
+        ----------
+        points: [n,3] ndarray
+            Points.
+        transform: [4,4] ndarray
+            Transformation matrix to be used.\n
+            [r11,r12,r13,tx]\n
+            [r21,r22,r23,ty]\n
+            [r31,r32,r33,tz]\n
+            [ 0 , 0 , 0 , 1]
+            
+        Returns
+        -------
+        transformed_points: [n,3] ndarray
+            The transformed points. 
+        """
         points = np.hstack((points,np.ones((points.shape[0],1))))
         points = points.dot(transform.T)[:,:3]
         return points
 
     def transform_points_inv(self,points,transform):
+        """
+        Transform points by the inverse of a transformation matrix.
+        
+        Parameters
+        ----------
+        points: [n,3] ndarray
+            Points.
+        transform: [4,4] ndarray
+            Transformation matrix to be used.\n
+            [r11,r12,r13,tx]\n
+            [r21,r22,r23,ty]\n
+            [r31,r32,r33,tz]\n
+            [ 0 , 0 , 0 , 1]
+            
+        Returns
+        -------
+        transformed_points: [n,3] ndarray
+            The transformed points. 
+        """
         points -= transform[:3,-1]
         rot = transform[:3,:3]
         points = points.dot(rot)[:,:3]
         return points
 
     def transform_transform(self,transform_original,transform):
+        """
+        Transform a transformation matrix by another transformation matrix.
+        
+        Parameters
+        ----------
+        transform_original: [4,4] ndarray
+            Original transformation matrix.\n
+            [r11,r12,r13,tx]\n
+            [r21,r22,r23,ty]\n
+            [r31,r32,r33,tz]\n
+            [ 0 , 0 , 0 , 1]
+        transform: [4,4] ndarray
+            Transformation matrix to be used.\n
+            [r11,r12,r13,tx]\n
+            [r21,r22,r23,ty]\n
+            [r31,r32,r33,tz]\n
+            [ 0 , 0 , 0 , 1]
+            
+        Returns
+        -------
+        transform_new: [4,4] ndarray
+            The transformed matrix.\n
+            [r11,r12,r13,tx]\n
+            [r21,r22,r23,ty]\n
+            [r31,r32,r33,tz]\n
+            [ 0 , 0 , 0 , 1]
+        """
         return transform.dot(transform_original)
 
     def transform_pose(self,pose,transform):
+        """
+        Transform a pose vector by a transformation matrix.
+        
+        Parameters
+        ----------
+        pose: [6,] list
+            The pose to be transformed.
+        transform: [4,4] ndarray
+            Transformation matrix to be used.\n
+            [r11,r12,r13,tx]\n
+            [r21,r22,r23,ty]\n
+            [r31,r32,r33,tz]\n
+            [ 0 , 0 , 0 , 1]
+            
+        Returns
+        -------
+        transformed_pose: [6,] list
+            The transformed pose vector.\n
+            [x, y, z, rX, rY, rZ]
+        """
         pose_transform = convert_pose_to_transform(pose)
         new_pose_transform = transform_transform(pose_transform,transform)
         return convert_transform_to_pose(new_pose_transform)
 
     def translate_transform(self,transform,x_offset=0.0,y_offset=0.0,z_offset=0.0):
         """
-        This function alters a transformation matrix, translating it by some amount along \
+        Alters a transformation matrix, translating it by some amount along \
         each of its axes. 
 
         Parameters
         ----------
-        transform: (4,4) ndarray
+        transform: [4,4] ndarray
+            The transformation_matrix.\n
+            [r11,r12,r13,tx]\n
+            [r21,r22,r23,ty]\n
+            [r31,r32,r33,tz]\n
+            [ 0 , 0 , 0 , 1]
         x_offset: float (m)
             The amount to translate the transform along its x axis.
         y_offset: float (m)
@@ -165,7 +258,7 @@ class Transforms:
 
         Returns
         -------
-        transform_translate: (4,4) ndarray
+        transform_translate: [4,4] ndarray
             The original transformation matrix translated by the desired amount along each axis.
         """
         end_point = np.hstack((np.eye(3),np.ones((3,1))))
@@ -182,6 +275,28 @@ class Transforms:
         return transform_translate
 
     def translate_pose(self,pose,x_offset=0.0,y_offset=0.0,z_offset=0.0):
+        """
+        Alters a pose vector, translating it by some amount along \
+        each of its axes. 
+
+        Parameters
+        ----------
+        pose: [6,] list
+            The pose vector.\n
+            [x, y, z, rX, rY, rZ]
+        x_offset: float (m)
+            The amount to translate the transform along its x axis.
+        y_offset: float (m)
+            The amount to translate the transform along its y axis.
+        z_offset: float (m)
+            The amount to translate the transform along its z axis.
+
+        Returns
+        -------
+        transformed_pose: [6,] list
+            The transformed pose vector.\n
+            [x, y, z, rX, rY, rZ]
+        """
         transform = self.convert_pose_to_transform(pose)
         end_point = np.hstack((np.eye(3),np.ones((3,1))))
         end_trans = transform.dot(end_point.T)
@@ -198,12 +313,17 @@ class Transforms:
 
     def rotate_transform(self,transform,rx=0.0,ry=0.0,rz=0.0):
         """
-        This function alters a transformation matrix, rotating it by some amount around \
+        Alters a transformation matrix, rotating it by some amount around \
         each of its axes. 
 
         Parameters
         ----------
-        transform: (4,4) ndarray
+        transform: [4,4] ndarray
+            Transformation matrix.\n
+            [r11,r12,r13,tx]\n
+            [r21,r22,r23,ty]\n
+            [r31,r32,r33,tz]\n
+            [ 0 , 0 , 0 , 1]
         rx: float (rad)
             The amount to rotate the transform around its x axis.
         ry: float (rad)
@@ -213,8 +333,12 @@ class Transforms:
 
         Returns
         -------
-        transform_rotate: (4,4) ndarray
-            The original transformation matrix rotated by the desired amount around each axis.
+        transform_rotate: [4,4] ndarray
+            The original transformation matrix rotated by the desired amount around each axis.\n
+            [r11,r12,r13,tx]\n
+            [r21,r22,r23,ty]\n
+            [r31,r32,r33,tz]\n
+            [ 0 , 0 , 0 , 1]
         """
         rx_mat = np.array(([1,0,0],[0,np.cos(rx),-np.sin(rx)],[0,np.sin(rx),np.cos(rx)]))
         ry_mat = np.array(([np.cos(ry),0,np.sin(ry)],[0,1,0],[-np.sin(ry),0,np.cos(ry)]))
@@ -226,6 +350,28 @@ class Transforms:
         return transform_rotate
 
     def rotate_pose(self,pose,rx=0.0,ry=0.0,rz=0.0):
+        """
+        Alters a transformation matrix, rotating it by some amount around \
+        each of its axes. 
+
+        Parameters
+        ----------
+        pose: [6,] list
+            The pose vector.\n
+            [x, y, z, rX, rY, rZ]
+        rx: float (rad)
+            The amount to rotate the transform around its x axis.
+        ry: float (rad)
+            The amount to rotate the transform around its y axis.
+        rz: float (rad)
+            The amount to rotate the transform around its z axis.
+
+        Returns
+        -------
+        transformed_pose: [6,] list
+            The transformed pose vector.\n
+            [x, y, z, rX, rY, rZ]
+        """
         transform = self.convert_pose_to_transform(pose)
         rx_mat = np.array(([1,0,0],[0,np.cos(rx),-np.sin(rx)],[0,np.sin(rx),np.cos(rx)]))
         ry_mat = np.array(([np.cos(ry),0,np.sin(ry)],[0,1,0],[-np.sin(ry),0,np.cos(ry)]))
@@ -237,7 +383,19 @@ class Transforms:
         return self.convert_transform_to_pose(transform_rotate)
 
     def unit_vec(self,vec):
-        """ Return the unit vector in the direction of 'vec' """
+        """ 
+        Return the unit vector in the direction of vec.
+        
+        Parameters
+        ----------
+        vec: [n,] ndarray
+            Vector.
+        
+        Returns
+        -------
+        unit_vec: [n,] ndarray
+            Unit vector. 
+        """
         vLen = np.linalg.norm(vec)
         if vLen == 0: # Avoid DIV0 errors
             return vec # Unit vec undefined, return vector unchanged
@@ -245,7 +403,28 @@ class Transforms:
             return np.divide(vec,vLen)
 
     def invert_transform(self,transform):
-        """ Return the transform T^{-1} that is the reverse of T """
+        """ 
+        Return the transform T^{-1} that is the reverse of T. If points are transformed \
+        by T, transforming the points then by T^{-1} would return them to their original positions. 
+        
+        Parameters
+        ----------
+        transform: [4,4] ndarray
+            Transformation matrix.\n
+            [r11,r12,r13,tx]\n
+            [r21,r22,r23,ty]\n
+            [r31,r32,r33,tz]\n
+            [ 0 , 0 , 0 , 1]
+            
+        Returns
+        -------
+        inv_transform: [4,4] ndarray
+            The inverse transformation matrix.\n
+            [r11,r12,r13,tx]\n
+            [r21,r22,r23,ty]\n
+            [r31,r32,r33,tz]\n
+            [ 0 , 0 , 0 , 1]
+        """
         R = transform[0:3, 0:3]
         Rinv = np.linalg.inv(R)
         d = transform[0:3, 3]
@@ -256,7 +435,9 @@ class Transforms:
         return rtnMatx
 
     def relative_transform(self,AtoB, AtoC):
-        """ For homogeneous transforms 'AtoB' and 'AtoC' , Return the transform B to C """
+        """
+        For homogeneous transforms 'AtoB' and 'AtoC' , Return the transform B to C
+        """
         return np.dot(AtoC, invert_transform(AtoB))
 
     # Checks if a matrix is a valid rotation matrix.
@@ -286,7 +467,7 @@ class Transforms:
 
         return np.array([x, y, z])
 
-    #Calculates Rotation Matrix given euler angles
+    # Calculates Rotation Matrix given euler angles
     def RPY_to_rotation_matrix(self, theta) :
         R_x = np.array([[1,         0,                  0                   ],
                         [0,         math.cos(theta[0]), -math.sin(theta[0]) ],
@@ -303,11 +484,11 @@ class Transforms:
         R = np.dot(R_z, np.dot( R_y, R_x ))
         return R
     
-    #Convert pixles to space
+    # Convert pixles to space
     def pxls_to_spc(self, pxls_dist, z_cam):
         return ( pxls_dist / 1280) * z_cam * math.tan(math.radians(69.4/2)) * 2
 
-    #Convert space to pixles
+    # Convert space to pixles
     def spc_to_pxls(self, spc_dist, z_cam):
         return spc_dist * 1280 / (z_cam * math.tan(math.radians(69.4/2)) * 2)
 
