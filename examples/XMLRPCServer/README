@@ -1,0 +1,23 @@
+The XML-RPC Server can be invoked by
+
+python3 XMLRPCServer.py
+
+and starts serving at port 8101 in the /RPC2 subdirectory.
+The server implements two methods:
+
+1) init()
+2) run_cmd(<string>)
+ 
+Calling the init() RPC will launch a remote Python shell 
+that takes exclusive control of the hand and its peripherals.
+The RPC run_cmd() takes a string of Python commands that will
+be executed on the hand. 
+
+Please be aware that this approach enables a malicious user
+to run ANY Python code on the hand's embedded computer, so the
+XML RPC server should only be used experimentally in safe, 
+local networks at your own risk.
+
+The file smarthand.urscript contains an example script for 
+an Universal Robot arm (Polyscope), demonstrating opening
+and closing the gripper by sending appropriate Python commands.

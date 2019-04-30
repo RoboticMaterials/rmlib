@@ -1,0 +1,28 @@
+def unnamed():
+  set_standard_analog_input_domain(0, 1)
+  set_standard_analog_input_domain(1, 1)
+  set_tool_analog_input_domain(0, 1)
+  set_tool_analog_input_domain(1, 1)
+  set_analog_outputdomain(0, 0)
+  set_analog_outputdomain(1, 0)
+  set_input_actions_to_default()
+  set_tool_voltage(0)
+  set_gravity([0.0, 0.0, 9.82])
+  set_safety_mode_transition_hardness(1)
+  set_tcp(p[0.0,0.0,0.0,0.0,0.0,0.0])
+  set_payload(0.0)
+  $ 1 "BeforeStart"
+  $ 2 "smarthand=rpc_factory('xmlrpc','http://192.168.2.119:8101/RPC2')"
+  smarthand=rpc_factory("xmlrpc","http://192.168.2.119:8101/RPC2")
+  $ 3 "smarthand.init()"
+  smarthand.init()
+  while (True):
+    $ 4 "Robot Program"
+    $ 5 "smarthand.run_cmd('rm.open_gripper()')"
+    smarthand.run_cmd("rm.open_gripper()")
+    $ 6 "Wait: 1.0"
+    sleep(1.0)
+    $ 7 "smarthand.run_cmd('rm.close_gripper()')"
+    smarthand.run_cmd("rm.close_gripper()")
+  end
+end
