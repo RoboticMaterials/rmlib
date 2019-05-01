@@ -1,5 +1,5 @@
 import sys
-sys.path.append('/home/nvidia/dev_rmstudio/lib') 
+sys.path.append('/home/nvidia/rmstudio/lib') 
 
 from xmlrpc.server import SimpleXMLRPCServer
 import xmlrpc.client
