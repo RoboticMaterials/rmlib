@@ -51,16 +51,40 @@ def run_cmd(dat_string):
         return "ok"
 
 def init():
-    import rmlib
-    global rm
-    rm = rmlib.RMLib()
+    try:
+        rm
+    except:
+        import rmlib
+        global rm
+        rm = rmlib.RMLib()
+#    import rmlib
+#    global rm
+#    rm = rmlib.RMLib()
     return True
 
+def irimage():
+	import cv2
+	import numpy as np
+	rm.set_laser_state(False)
+	rm.set_auto_exposure_on(True)
+	#rm.set_exposure(165000)
 	
+	img = rm.get_ir_image()
+	img = cv2.flip(img,0)
+	img = cv2.flip(img,1)
+	img = np.array(img*255./img.max()).astype(np.uint8)
+
+	cv2.imwrite('/media/ramdisk/snapshot.png',img)
+	return True	
+
+def get_object_defs():
+        #...
+        #return Features ("M3 Screw","Banana")
 
 print("Starting XML-RPC server on port 8101")
 server = SimpleXMLRPCServer(("", 8101),requestHandler=RequestHandler)
 server.register_introspection_functions()
 server.register_function(run_cmd)
 server.register_function(init)
+server.register_function(irimage)
 server.serve_forever()
