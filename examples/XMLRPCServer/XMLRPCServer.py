@@ -77,9 +77,19 @@ def irimage():
 	cv2.imwrite('/media/ramdisk/snapshot.png',img)
 	return True	
 
+def listToPose(l):
+  assert type(l) is list
+  return {'x' : l[0], 'y' : l[1], 'z' : l[2], 'rx' : l[3], 'ry' : l[4], 'rz' : l[5]}
+
 def get_object_defs():
         #...
-        #return Features ("M3 Screw","Banana")
+        print("Object definitions requested")
+        return "M3 Screw%Banana%Ratstail%Apple%Newby%No_underscore%Complex screw, 110#3%Not so nice long string%And one last one"
+
+def get_object_pose(object):
+	# your stuff
+        pose = [0.563, -0.114, 0.22, 2.20, 2.223,0]
+        return listToPose(pose)
 
 print("Starting XML-RPC server on port 8101")
 server = SimpleXMLRPCServer(("", 8101),requestHandler=RequestHandler)
@@ -87,4 +97,6 @@ server.register_introspection_functions()
 server.register_function(run_cmd)
 server.register_function(init)
 server.register_function(irimage)
+server.register_function(get_object_defs)
+server.register_function(get_object_pose)
 server.serve_forever()
