@@ -8,7 +8,7 @@ function close_running(){
 
 close_running
 
-cd ~/rmstudio/lib/rtde
+cd ~/rmstudio/lib/ur_servers
 python2 ur5_rtde.py &
 echo "Interfaces running"
 

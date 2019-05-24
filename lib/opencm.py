@@ -277,9 +277,9 @@ class OpenCM:
         intensity: int
             Intensity value between 0 and 255.
         """
-        color = 255-color
+        intensity = 255-intensity
         self.ser.flushInput()
-        self.ser.write(('r{}\r'.format(color)).encode())
+        self.ser.write(('r{}\r'.format(intensity)).encode())
         return 
 
     def set_green_led(self,intensity):
@@ -291,9 +291,9 @@ class OpenCM:
         intensity: int
             Intensity value between 0 and 255.
         """
-        color = 255-color
+        intensity = 255-intensity
         self.ser.flushInput()
-        self.ser.write(('g{}\r'.format(color)).encode())
+        self.ser.write(('g{}\r'.format(intensity)).encode())
         return 
 
     def set_blue_led(self,intensity):
@@ -305,9 +305,9 @@ class OpenCM:
         intensity: int
             Intensity value between 0 and 255.
         """
-        color = 255-color
+        intensity = 255-intensity
         self.ser.flushInput()
-        self.ser.write(('b{}\r'.format(color)).encode())
+        self.ser.write(('b{}\r'.format(intensity)).encode())
         return 
 
     def set_dance_mode(self):
