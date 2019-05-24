@@ -63,7 +63,7 @@ def init():
 def set_robot_ip(newaddr):
 	import os
 	from rm_config import rm_config
-	oldaddr=rm_config['robot_arm']['ip_address']
+	oldaddr=rm_config['robot_arm']['robot_arm_ip']
 	os.system("sed -i -e 's/'" + oldaddr +"'\\b/'"+newaddr+"'/g' /home/nvidia/rmstudio/lib/rm_config.py")
 	print("Replaced " + oldaddr + " with " + newaddr + " in rm_config")
 	return True
