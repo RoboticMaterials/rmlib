@@ -199,6 +199,11 @@ def test():
 	return pose 
 	#return {'Pose' : listToPose(pose), 'Width' : 3.1415}
 
+def update():
+	import os
+	os.system("git pull")
+	return True
+
 print("Starting XML-RPC server on port 8101")
 server = SimpleXMLRPCServer(("", 8101),requestHandler=RequestHandler)
 server.register_introspection_functions()
