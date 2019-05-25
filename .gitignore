@@ -3,3 +3,4 @@
 *.pyc
 pyntcloud*
 .ipynb_checkpoints/
+examples/assembly_demos/output/
