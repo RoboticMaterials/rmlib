@@ -23,8 +23,8 @@ rm_config = {
         "realsense" : True,
         "motor_control" : True,
         "ur5" : True,
-        "optoforce" : True,
-        "assembly" : True,
+        "optoforce" : False,
+        "assembly" : False,
         "binpicking" : False
     },
     "offsets" : 
