@@ -1,0 +1,2 @@
+#!/bin/bash
+kill ps ax | grep -m1 'python2 ur5_rtde.py' | awk '{print $1}'
