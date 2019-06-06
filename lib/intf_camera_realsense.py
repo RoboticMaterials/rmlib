@@ -75,7 +75,7 @@ class RealSense:
         self.pipe.start()
         self.running = True
         
-    def set_laser_state(self,state):
+    def set_laser_state(self,set_state):
         """
         Toggles laser projector. In some cases turning the laser off can be helpful with shiny objects.
         
@@ -86,13 +86,14 @@ class RealSense:
         """
         
         if self.depth_sensor.supports(rs.option.emitter_enabled):
-            if state==False:
+            if not set_state:
                 self.depth_sensor.set_option(rs.option.emitter_enabled,0.0)
             else:
                 self.depth_sensor.set_option(rs.option.emitter_enabled,1.0)
+            
+            time.sleep(0.5)              
         else:
-            print('Error setting laser state')
-        time.sleep(0.5)
+            print('Error setting laser state #2')
     
     def set_laser_power(self,power):
         """
@@ -133,9 +134,12 @@ class RealSense:
         self.camera_controller.set_depth_table(depth_table) 
         time.sleep(.5)
         
-    def set_disparity_shift_dist(self,camera_dist):
+    def disparity_shift_dist_function(self, distance, frame='camera'):
         poly = np.poly1d([2634.54285829, -2341.63812835, 617.51408449])
-        disp_shift = int(poly(camera_dist))
+        return int(poly(camera_dist))
+    
+    def set_disparity_shift_dist(self,camera_dist):
+        disp_shift = disparity_shift_function(camera_dist, frame='camera')
         print("Disparity Shift: {}".format(disp_shift))
         self.set_disparity_shift(disp_shift)
         time.sleep(.5)      
@@ -209,6 +213,16 @@ class RealSense:
     def get_exposure(self):
         return self.depth_sensor.get_option(rs.option.exposure)
     
+    def set_auto_white_balance_on(self,state):      
+        self.depth_sensor.set_option(rs.option.enable_auto_white_balance, state)
+        
+    def set_white_balance_gain(self,gain):
+        #set from 1 to 165000
+        self.depth_sensor.set_option(rs.option.white_balance,gain)
+        
+    def get_white_balance_gain(self):
+        return self.depth_sensor.get_option(rs.option.gain)
+    
     def get_snapshot(self):
         self.set_laser_state(True)
         frames = self.pipe.wait_for_frames()
@@ -239,8 +253,11 @@ class RealSense:
             Enabling post processing will give a smoother and usually a more accurate cloud; however, \
             it will also slightly decrease the speed.
         """
-
-        self.set_laser_state(True)
+        change_laser = False
+        if not self.get_laser_state():
+            self.set_laser_state(True)
+            change_laser = True
+            
         frames = self.pipe.wait_for_frames()
         depth = frames.get_depth_frame()
         
@@ -249,8 +266,9 @@ class RealSense:
         vtx = np.asanyarray(points.get_vertices())
         pts = np.vstack((vtx[:]['f0'],vtx[:]['f1'],vtx[:]['f2'])).T
         cloud = pts[np.where(np.all(np.equal(pts,np.zeros(3)), axis=1)==False)[0]]
-        cloud = cloud.dot(np.array([[-1,0,0],[0,-1,0],[0,0,1]]))
-        self.set_laser_state(False)
+        
+        if change_laser:
+            self.set_laser_state(False)
         return cloud
     
     def get_depth_image(self):
@@ -268,8 +286,9 @@ class RealSense:
         ir_data = ir.get_data()
         return np.asanyarray(ir_data)
     
-    def get_scale_for_real_to_pixel(self,height,res=(720,1280)):
-        half_width = height * (res[0] - self.cy) / self.fy
+    
+    def get_pixles_per_meter(self, distance, res=(720,1280)):
+        half_width = distance * (res[0] - self.cy) / self.fy
         scale = res[0]/(2.0*half_width)
         return scale
     
@@ -282,7 +301,7 @@ class RealSense:
         if height:
             z = np.zeros(depth.shape)+height
         pts = np.dstack((x, y, z)).reshape(-1,3)
-        cloud = pts[np.where(np.all(np.equal(pts,np.zeros(3)), axis=1)==False)[0]]
+        cloud = pts[np.where(np.all(np.logical_not(np.equal(pts,np.zeros(3)), axis=1)))[0]]
         return cloud.dot(np.array([[-1,0,0],[0,-1,0],[0,0,1]]))
 
     def convert_point_cloud_to_depth_image(self, cloud):

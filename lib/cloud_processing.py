@@ -4,7 +4,7 @@ from sklearn import linear_model
 from sklearn.decomposition import PCA
 from scipy.spatial import ConvexHull
 
-class Point_Cloud_Processing:
+class Cloud_Processing:
     
     def downsample_cloud(self,cloud, leaf_size=0.005):
         """
@@ -53,7 +53,7 @@ class Point_Cloud_Processing:
 
         return cloud_vg
 
-    def remove_planar_surface(self,cloud,remove_tolerance=0.0025):
+    def remove_planar_surface(self,cloud,rmv_tolerance=0.0025,rmv_high = True, rmv_low = False):
         """
         Removes points that are contained in an estimated planar surface computed with RANSAC Regression. Usefull for separating objects from the surface that they rest on. 
 
@@ -61,8 +61,12 @@ class Point_Cloud_Processing:
         ----------
         cloud: [n,3] ndarray
             Point cloud.
-        remove_tolerance: float (optional)
+        rmv_tolerance: float (optional)
             Thickness tolerance for surface removal (m).
+        rmv_high: bool (optional)
+            Removes all points higher (in the +Z direction) than the plane
+        rmv_low: bool (optional)
+            Removes all points lower (in the -Z direction) than the plane
             
         Return
         ------
@@ -72,7 +76,17 @@ class Point_Cloud_Processing:
         
         surface_est = self.get_planar_surface_estimate(cloud.copy())[:,2]
         dist = cloud[:,2]-surface_est
-        not_table_idxs = np.where(np.logical_and(np.abs(dist) > remove_tolerance, dist < 0.0))
+        
+        if rmv_high & (not rmv_low): # remove higher
+            not_table_idxs = np.where(np.logical_and(np.abs(dist) > rmv_tolerance, dist < 0.0))
+        elif (not rmv_high) & rmv_low: # remove lower
+            not_table_idxs = np.where(np.logical_and(np.abs(dist) > rmv_tolerance, dist > 0.0))
+        elif rmv_high & rmv_low: # remove both
+            not_table_idxs = []
+        else: # remove neither
+            not_table_idxs = np.where(np.abs(dist) > rmv_tolerance)
+            
+            
         cloud_nt = cloud[not_table_idxs]
 
         return cloud_nt
@@ -122,6 +136,10 @@ class Point_Cloud_Processing:
         
         surface_est = self.get_planar_surface_estimate(cloud)[:,2]
         return np.average(surface_est)
+    
+    def crop_to_inner_dims(self, cloud, feature):
+        inner_rec = self.generate_rect(feature['pose'],feature['inner_dimensions'])
+        return self.crop_cloud_rect(cloud,inner_rec)
 
     def sort_clouds_height(self,clouds):
         """
@@ -138,7 +156,7 @@ class Point_Cloud_Processing:
 
         """
 
-        max_z = np.array([cloud[:][2].max() for cloud in clouds])
+        max_z = np.array([cloud[:,2].max() for cloud in clouds])
         return [clouds[idx] for idx in np.argsort(max_z)]
 
     def sort_clouds_size(self,clouds):
@@ -159,7 +177,7 @@ class Point_Cloud_Processing:
         clouds.reverse()
         return clouds
 
-    def crop_cloud(self,cloud,box):
+    def crop_cloud_box(self,cloud,box):
         """
         Crop cloud to be within a box.
         
@@ -216,13 +234,13 @@ class Point_Cloud_Processing:
         a = u.dot(cloud.T)
         b = v.dot(cloud.T)
 
-        check_x = np.logical_and(u.dot(vertices[1]) <= a, a <= u.dot(vertices[0]))
-        check_y = np.logical_and(v.dot(vertices[2]) <= b, b <= v.dot(vertices[0]))
+        check_x = np.logical_and(a <= u.dot(vertices[1]), a >= u.dot(vertices[0]))
+        check_y = np.logical_and(b <= v.dot(vertices[2]), b >= v.dot(vertices[0]))
 
         return cloud[np.logical_and(check_x,check_y)]
     
     
-    def get_bounding_rect(cloud):
+    def get_bounding_rect(self,cloud):
         """
         Finds bounding rectangle of object cloud. Rectangle sits tangent to highest point on cloud.
 
@@ -341,9 +359,9 @@ class Point_Cloud_Processing:
 
         return pca.inverse_transform(vertices), bb_dim
     
-    def extrude_bounding_rect(self,rectangle,height):
+    def extrude_rect(self,rectangle,height):
         """
-        Extrudes bounding rectangle down a specified height relative to the orientation of the rectangle \
+        Extrudes rectangle down a specified height relative to the orientation of the rectangle \
         to make a bounding box.
 
         Parameters
@@ -400,7 +418,7 @@ class Point_Cloud_Processing:
         dimensions: [3,] ndarray
             The dimensions of the bounding box (lenght,width,height) where length > width.
         """
-        _,dims = self.get_bounding_box(object_cloud)
+        _,dims = self.get_bounding_box(cloud)
         return dims
             
     def compare_dimensions(self,object_cloud,model_dims,tolerance=0.,transform=None,check_height=False,smaller_than=False):
@@ -436,6 +454,7 @@ class Point_Cloud_Processing:
 
         model_length = model_dims[0]
         model_width = model_dims[1]
+        model_height = model_dims[2]
 
         match = False
         model_asp = model_width/model_length
@@ -590,7 +609,7 @@ class Point_Cloud_Processing:
         return dist
 
 
-    def get_transform_for_CABB(self,box):
+    def get_pose_for_CABB(self,box):
         """
         Find the transformation matrix to center allign a box (center of the box at the origin and axes alligned with principle axes).
 
@@ -630,7 +649,7 @@ class Point_Cloud_Processing:
         trans_mat[:3,3] = transl
         return trans_mat
 
-    def get_transform_for_AABB(self,box):
+    def get_pose_for_AABB(self,box):
         """
         Find the transform matrix to make a list of points axis alligned (corner of the box at the origin)
 
@@ -658,7 +677,7 @@ class Point_Cloud_Processing:
         trans_mat[:3,3] = box[0,:]
         return trans_mat
 
-    def get_rotation_matrix_for_line(self,lA,lB):
+    def get_rotation_for_line(self,lA,lB):
         """
         Finds the rotation matrix to allign lA to lB.
 
@@ -870,15 +889,54 @@ class Point_Cloud_Processing:
             True if the point is within the box.
         """
 
-        AA_transform = self.get_transform_for_AABB(box)
-        AABB = self.transform_points(box,AA_transform)
-        AA_point = self.transform_points(point,AA_transform)
+        AA_pose = self.get_pose_for_AABB(box)
+        AABB = self.transform_points(box,AA_pose)
+        AA_point = self.transform_points(point,AA_pose)
 
         x_check = np.logical_and(AA_point[:,0] >= AABB[:,0].min(), AA_point[:,0] <= AABB[:,0].max())
         y_check = np.logical_and(AA_point[:,1] >= AABB[:,1].min(), AA_point[:,1] <= AABB[:,1].max())
         z_check = np.logical_and(AA_point[:,2] >= AABB[:,2].min(), AA_point[:,2] <= AABB[:,2].max())
 
         return np.logical_and(x_check,np.logical_and(y_check,z_check))
+    
+    def generate_box(self, t, dim):
+        #TODO add origin options
+        
+        #Top-center
+        if isinstance(t,list) and len(t)==6:
+            t = self.convert_pose_to_transform(t)
+       
+        box = np.zeros((8,3))
+
+        box[0] = [-dim[0]/2,-dim[1]/2,+dim[2]]
+        box[1] = [+dim[0]/2,-dim[1]/2,+dim[2]]
+        box[2] = [-dim[0]/2,+dim[1]/2,+dim[2]]
+        box[3] = [+dim[0]/2,+dim[1]/2,+dim[2]]
+        box[4] = [-dim[0]/2,-dim[1]/2,0]
+        box[5] = [+dim[0]/2,-dim[1]/2,0]
+        box[6] = [-dim[0]/2,+dim[1]/2,0]
+        box[7] = [+dim[0]/2,+dim[1]/2,0]
+
+        box = self.transform_points(box,t)
+        return box
+    
+    def generate_rect(self, t, dim):
+        #TODO add origin options
+        
+        #Top-center
+        if isinstance(t,list) and len(t)==6:
+            t = self.trans_vec_to_matrix(t)
+        
+        rec = np.zeros((4,3))
+
+        rec[0] = [-dim[0]/2,-dim[1]/2,0]
+        rec[1] = [+dim[0]/2,-dim[1]/2,0]
+        rec[2] = [-dim[0]/2,+dim[1]/2,0]
+        rec[3] = [+dim[0]/2,+dim[1]/2,0]
+        
+        rec = self.transform_points(rec,t)
+        return rec
+
 
 
 

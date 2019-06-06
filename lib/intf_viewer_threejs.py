@@ -18,14 +18,17 @@ class Viewer:
         axis = [
             {
                 "color": "red",
+                "hexcolor": "#ff0000",
                 "vertices": [[0, 0, 0], [10, 0, 0]]
             },
             {
                 "color": "green",
+                "hexcolor": "#00ff00",
                 "vertices": [[0, 0, 0], [0, 10, 0]]
             },
             {
                 "color": "blue",
+                "hexcolor": "#0000ff",
                 "vertices": [[0, 0, 0], [0, 0, 10]]
             }
         ]
@@ -146,7 +149,6 @@ class Viewer:
             """
             self.cloud = None
             self.lines = []
-            self.add_axis(np.eye(4))
             self.add_empty()
             
 
@@ -190,7 +192,7 @@ class Viewer:
             self.cloud = cloud
             
 
-        def add_axis(self,transform):
+        def add_axis(self, pose):
             """
             Add axis to view object.
             
@@ -202,20 +204,23 @@ class Viewer:
             start_point = np.hstack((np.zeros((3,3)), np.ones((3,1))))
             end_point = np.hstack((np.eye(3)*0.025, np.ones((3,1))))
 
-            start_trans = transform.dot(start_point.T)
-            end_trans = transform.dot(end_point.T)
+            start_trans = pose.dot(start_point.T)
+            end_trans = pose.dot(end_point.T)
             
             axis = [
                 {
                     "color": "red",
+                    "hexcolor": "#ff0000",
                     "vertices": [list(start_trans[:3,0]), list(end_trans[:3,0])]
                 },
                 {
                     "color": "green",
+                    "hexcolor": "#00ff00",
                     "vertices": [list(start_trans[:3,1]), list(end_trans[:3,1])]
                 },
                 {
                     "color": "blue",
+                    "hexcolor": "#0000ff",
                     "vertices": [list(start_trans[:3,2]), list(end_trans[:3,2])]
                 }
             ]
@@ -447,10 +452,66 @@ class Viewer:
             self.cloud = None
             self.lines = []
             self.add_empty()
-            self.add_axis(np.eye(4))
             
-
-        def show(self,height=750,width=1200):
+        def publish(self,height=750,width=1200,view='camera',show=True, saveToFile=False):
+            """ 
+            Publish the point cloud by showing it, saving it, or both
+            
+            Parameters
+            ----------
+            height: int
+                Height of viewer.
+            width: int
+                Width of viewer.
+            """
+            
+            if view == 'camera':
+                pose = np.zeros((4,4))
+                pose[0][1] = -1
+                pose[1][0] = -1
+                pose[2][2] = -1
+                pose[3][3] = 1
+                pose[2][3] = 0.5
+                
+                
+                #Transform points  
+                temp1 = self.cloud[:,np.array([0,1,2])]
+                temp2 = self.cloud[:,np.array([3,4,5])]
+                
+                temp1 = np.hstack((temp1,np.ones((self.cloud.shape[0],1))))
+                temp1 = temp1.dot(pose.T)[:,:3]
+                
+                view_cloud = np.hstack((temp1,temp2))
+                
+                for line in self.lines:
+                    points = np.array(line['vertices'][0])
+                    points = np.hstack((points,np.ones((1,))))
+                    points = points.dot(pose.T)
+                    line['vertices'][0] = points.tolist()[:3]
+                    
+                    points = np.array(line['vertices'][1])
+                    points = np.hstack((points,np.ones((1,))))
+                    points = points.dot(pose.T)
+                    line['vertices'][1] = points.tolist()[:3]
+                
+            else:
+                view_cloud = self.cloud
+                self.add_axis(np.eye(4))
+            
+            cloud_df = pd.DataFrame((view_cloud), columns = ['x','y','z','red','green','blue'])
+            cloud_pc = PyntCloud(cloud_df)
+            
+            if show:
+                warnings.filterwarnings('ignore')
+                plotObj = cloud_pc.plot(initial_point_size = 0.001, backend="pythreejs", polylines=self.lines, height=height, width=width)
+                warnings.filterwarnings('always')
+            
+            if saveToFile:
+                cloud_pc.to_file("/home/nvidia/dev_rmstudio/lib/models/point_cloud.ply")
+                df = pd.DataFrame(self.lines)
+                df.to_json('/home/nvidia/dev_rmstudio/lib/models/dem_lines.json')
+            
+        def show(self,height=750,width=1200,view='camera'):
             """ 
             Display the point cloud 
             
@@ -461,36 +522,17 @@ class Viewer:
             width: int
                 Width of viewer.
             """
+            self.publish(height=height,width=width,view=view,show=True,saveToFile=False)
+
+        def saveToFile(self,height=750,width=1200,view='camera'):
+            """ 
+            Display the point cloud 
             
-            warnings.filterwarnings('ignore')
-                        
-            cloud_df = pd.DataFrame( ( self.cloud ) , columns = ['x','y','z','red','green','blue'] )
-            cloud_pc = PyntCloud( cloud_df )
-
-            plotObj = cloud_pc.plot( initial_point_size = 0.001, backend="pythreejs", polylines=self.lines, height=height, width=width)
-
-            # === VIEWER DEBUG ===
-
-            if 0:
-                print( "Using pyntcloud version:" , pyntcloud.__version__ )
-                print( "pyntcloud Location:" , pyntcloud.__file__ )
-                print( "Cloud Type:" , type( cloud_pc ) , cloud_pc.__class__.__name__ )
-                print( "About to return a plot object of type:" , type( plotObj ) , plotObj.__class__.__name__ )
-                print( "Return object has the following props:" )
-                print( dir( plotObj ) )
-                print( "\tiframe" , type( plotObj.iframe ) , plotObj.iframe.__class__.__name__ )
-                print( "\theight" , type( plotObj.height ) , plotObj.height.__class__.__name__ )
-                print( "\tsrc" , type( plotObj.src ) , plotObj.src.__class__.__name__ )
-                print( "\twidth" , type( plotObj.width ) , plotObj.width.__class__.__name__ )
-                print( "\tparams" , type( plotObj.params ) , plotObj.params.__class__.__name__ )
-                print( "\t\tThere are" , len( plotObj.params ) , "params" )
-                for key , val in plotObj.params.items():
-                    print( "\t\t" , key , val )
-            # ___ END DEBUG ___
-            
-            warnings.filterwarnings('always')
-
-            return plotObj
-
-
-
+            Parameters
+            ----------
+            height: int
+                Height of viewer.
+            width: int
+                Width of viewer.
+            """
+            self.publish(height=height,width=width,view=view,show=False,saveToFile=True)

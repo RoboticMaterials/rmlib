@@ -18,7 +18,7 @@ from transforms import *
 
 from rm_config import rm_config # NOTE: This is "rm/interfaces/config.py" , NOT the PyPI pakckage "config"!
 
-robot_arm_ip = rm_config["robot_arm"]["robot_arm_ip"]
+robot_arm_ip = rm_config["robot_arm"]["ip_address"]
 robot_proxy_ip = ni.ifaddresses('eth0')[ni.AF_INET][0]['addr']
 
 class RequestHandler(SimpleXMLRPCRequestHandler):

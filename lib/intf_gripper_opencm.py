@@ -3,12 +3,14 @@ import time
 
 class OpenCM:
     def __init__(self):
+        
         #set constants
-        self.MAX_WIDTH = 108 
+        self.MAX_WIDTH = 108
+        self.MIN_WIDTH = -60
         self.MAX_TORQUE = 200
         
         #init serial connection
-        port = "/dev/opencm"
+        port = "/dev/ttyACM0"
         timeout = 3
         self.ser = serial.Serial(port=port,timeout=timeout)
         self.ser.close()
@@ -149,18 +151,26 @@ class OpenCM:
         Success: bool
         """
         
-        width = int(float(width) * 1000.0)
-        if width > self.MAX_WIDTH:
-            width = self.MAX_WIDTH
-        elif width < 0:
-            width = 0
             
         if width2 is not None:
-            width2 = int(float(width2) * 1000.0)
+            width2 = int(float(width2*2) * 1000.0)
             if width2 > self.MAX_WIDTH:
                 width2 = self.MAX_WIDTH
-            elif width2 < -self.MAX_WIDTH:
-                width2 = -self.MAX_WIDTH
+            elif width2 < self.MIN_WIDTH:
+                width2 = self.MIN_WIDTH
+                
+            width = int(float(width*2) * 1000.0)
+            if width > self.MAX_WIDTH:
+                width = self.MAX_WIDTH
+            elif width < self.MIN_WIDTH:
+                width = self.MIN_WIDTH
+                
+        else:
+            width = int(float(width) * 1000.0)
+            if width > self.MAX_WIDTH:
+                width = self.MAX_WIDTH
+            elif width < 0:
+                width = 0
 
         self.ser.flushInput()
         if width2 is not None:
@@ -189,8 +199,8 @@ class OpenCM:
         width = int(float(width) * 2000.0)
         if width > self.MAX_WIDTH:
             width = self.MAX_WIDTH
-        elif width < -self.MAX_WIDTH:
-            width = -self.MAX_WIDTH
+        elif width < self.MIN_WIDTH:
+            width = self.MIN_WIDTH
         self.ser.write(('>{}\r'.format(width)).encode())
         return int(self.ser.readline().decode()[0])
 
@@ -211,44 +221,10 @@ class OpenCM:
         width = int(float(width) * 2000.0)
         if width > self.MAX_WIDTH:
             width = self.MAX_WIDTH
-        elif width < -self.MAX_WIDTH:
-            width = -self.MAX_WIDTH
+        elif width < self.MIN_WIDTH:
+            width = self.MIN_WIDTH
         self.ser.flushInput()
         self.ser.write(('<{}\r'.format(width)).encode())
-        return int(self.ser.readline().decode()[0])
-    
-    def set_finger_positions(self,widthL,widthR):
-        """
-        Set width between right finger and 0, and left finger and 0.
-        
-        Parameters 
-        ----------
-        widthL: float
-            Width of left finger relative to 0 (m).
-            
-        widthR: float
-            Width of right finger relative to 0 (m).
-            
-            
-        Return
-        ------
-        Success: bool
-        """
-            
-        widthL = int(float(widthL) * 2000.0)
-        if widthL > self.MAX_WIDTH:
-            widthL = self.MAX_WIDTH
-        elif widthL < -self.MAX_WIDTH:
-            widthL = -self.MAX_WIDTH
-            
-        widthR = int(float(widthR) * 2000.0)
-        if widthR > self.MAX_WIDTH:
-            widthR = self.MAX_WIDTH
-        elif widthR < -self.MAX_WIDTH:
-            widthR = -self.MAX_WIDTH
-            
-        self.ser.flushInput()
-        
         return int(self.ser.readline().decode()[0])
 
     def set_min_object_size(self,object_size):
@@ -277,9 +253,9 @@ class OpenCM:
         intensity: int
             Intensity value between 0 and 255.
         """
-        intensity = 255-intensity
+        color = 255-color
         self.ser.flushInput()
-        self.ser.write(('r{}\r'.format(intensity)).encode())
+        self.ser.write(('r{}\r'.format(color)).encode())
         return 
 
     def set_green_led(self,intensity):
@@ -291,9 +267,9 @@ class OpenCM:
         intensity: int
             Intensity value between 0 and 255.
         """
-        intensity = 255-intensity
+        color = 255-color
         self.ser.flushInput()
-        self.ser.write(('g{}\r'.format(intensity)).encode())
+        self.ser.write(('g{}\r'.format(color)).encode())
         return 
 
     def set_blue_led(self,intensity):
@@ -305,9 +281,9 @@ class OpenCM:
         intensity: int
             Intensity value between 0 and 255.
         """
-        intensity = 255-intensity
+        color = 255-color
         self.ser.flushInput()
-        self.ser.write(('b{}\r'.format(intensity)).encode())
+        self.ser.write(('b{}\r'.format(color)).encode())
         return 
 
     def set_dance_mode(self):
@@ -320,7 +296,7 @@ class OpenCM:
 #Get Gripper Commands
 #====================
     
-    def get_software_version(self):
+    def get_firmware_version(self):
         """
         Gets current software version date.
         
@@ -383,3 +359,74 @@ class OpenCM:
         self.ser.write('T\r'.encode())
         return self.ser.readline().decode()[:-2]
 
+#===============
+#NOT OPEN SOURCE 
+#===============
+
+#====================
+#Drill Setup Commands
+#====================
+
+    def is_drill_attatched(self):
+        self.ser.flushInput()
+        self.ser.write('i\r'.encode())
+        return int(self.ser.readline().decode()[0])
+
+    def activate_drill(self):
+        self.ser.flushInput()
+        self.ser.write('q\r'.encode())
+        return int(self.ser.readline().decode()[0])
+
+    def deactivate_drill(self):
+        self.ser.flushInput()
+        self.ser.write('e\r'.encode())
+        return int(self.ser.readline().decode()[0])
+    
+#==================
+#Drill Set Commands
+#==================
+    
+    def turn_drill_ccw(self):
+        self.ser.flushInput()
+        self.ser.write('}\r'.encode())
+        return 1
+
+    def turn_drill_cw(self):
+        self.ser.flushInput()
+        self.ser.write('{\r'.encode())
+        return 1
+
+    def set_drill_torque(self,torque):
+        if torque > 200:
+            torque = 200
+
+        self.ser.write('p{}\r'.format(torque).encode())
+        return 1
+
+#==================
+#Get Drill Commands
+#==================
+
+    def get_drill_temperature(self):
+        self.ser.flushInput()
+        self.ser.write('Y\r'.encode())
+        return int(self.ser.readline().decode()[0])
+    
+#======================
+#Factory Setup Commands
+#======================
+    
+    def setup_factory_right_motor(self):
+        self.ser.flushInput()
+        self.ser.write('1\r'.encode())
+        return int(self.ser.readline().decode()[0])
+
+    def setup_factory_left_motor(self):
+        self.ser.flushInput()
+        self.ser.write('2\r'.encode())
+        return int(self.ser.readline().decode()[0])
+
+    def setup_factory_drill_motor(self):
+        self.ser.flushInput()
+        self.ser.write('3\r'.encode())
+        return int(self.ser.readline().decode()[0])

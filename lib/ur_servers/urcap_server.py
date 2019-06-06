@@ -1,5 +1,5 @@
 import sys
-sys.path.append('/home/nvidia/rmstudio/lib') 
+sys.path.append('/home/nvidia/dev_rmstudio/lib') 
 
 from xmlrpc.server import SimpleXMLRPCServer
 import xmlrpc.client
@@ -11,6 +11,7 @@ import numpy as np
 import sys
 import traceback
 import math
+from IPython.display import clear_output
 
 quit=0
 
@@ -51,6 +52,7 @@ def run_cmd(dat_string):
         return "ok"
 
 def init():
+    print('start init')
     try:
         rm
         print("RMLib already loaded")
@@ -63,8 +65,8 @@ def init():
 def set_robot_ip(newaddr):
 	import os
 	from rm_config import rm_config
-	oldaddr=rm_config['robot_arm']['robot_arm_ip']
-	os.system("sed -i -e 's/'" + oldaddr +"'\\b/'"+newaddr+"'/g' /home/nvidia/rmstudio/lib/rm_config.py")
+	oldaddr=rm_config['robot_arm']['ip_address']
+	os.system("sed -i -e 's/'" + oldaddr +"'\\b/'"+newaddr+"'/g' /home/nvidia/dev_rmstudio/lib/rm_config.py")
 	print("Replaced " + oldaddr + " with " + newaddr + " in rm_config")
 	return True
 
@@ -89,12 +91,6 @@ def listToPose(l):
     assert type(l) is list
     return {'x' : l[0], 'y' : l[1], 'z' : l[2], 'rx' : l[3], 'ry' : l[4], 'rz' : l[5]}
 
-
-def close_gripper(force):
-	rm.set_gripper_torque(force)
-	return_value = rm.close_gripper()
-	return bool(return_value)
-
 def get_object_defs():
     try:
         feature_lib = rm.load_feature_lib('/home/nvidia/dev_rmstudio/urcap_server/feature_lib.json')
@@ -108,78 +104,65 @@ def get_object_defs():
         print(e)
         return "generic"
 
-def get_object_pose(feature_name):
-    try:
-        plane_tol = 0.0045
-        feature_lib = rm.load_feature_lib('/home/nvidia/dev_rmstudio/urcap_server/feature_lib.json')
-        #Get Cloud
-        capture = rm.get_feature_capture(feature_lib[feature_name])
+def get_object_pose_base(feature_name):
+    plane_tol = 0.0045
+    feature_lib = rm.load_feature_lib('/home/nvidia/dev_rmstudio/urcap_server/feature_lib.json')
 
-        cloud_full_ds = rm.downsample_cloud(capture['cloud_raw'],leaf_size=0.003)
+    #Get Cloud
+    rm.set_disparity_shift(100)
+    capture = rm.get_feature_capture(feature_lib[feature_name])
 
-        #Remove Plane
-        capture['cloud_raw'] = rm.remove_planar_surface(capture['cloud_raw'], plane_tol)
+    #Downsample Cloud
+    cloud_full_ds = rm.downsample_cloud(capture['cloud_raw'],leaf_size=0.003)
 
-        #Find Feature
-        trans, clouds_filt, cloud_ds = rm.find_feature(capture, feature_lib[feature_name])
+    #Remove Plane
+    capture['cloud_raw'] = rm.remove_planar_surface(capture['cloud_raw'], plane_tol, rmv_high = False, rmv_low = True)
 
-        cld_and_trans = zip(clouds_filt,trans)
-        cld_and_trans = sorted(cld_and_trans,key=lambda x: len(x[0]))
-        cld_and_trans.reverse()
+    #Find Feature
+    trans, clouds_filt, cloud_ds = rm.find_feature(capture, feature_lib[feature_name])
 
-        cloud_sel = None
-        trans_sel = None
+    #Zip clouds and trans
+    cld_and_trans = zip(clouds_filt,trans)
 
+    #Sort largest to smallest
+    cld_and_trans = sorted(cld_and_trans,key=lambda x: len(x[0]))
+    cld_and_trans.reverse()
 
-        for item in cld_and_trans:
-            cloud_sel_width = rm.get_cloud_width(item[0],item[1])
-            if cloud_sel_width < 0.1:
-                cloud_sel = item[0]
-                trans_sel = item[1]
+    #Find the first cloud within the grippers width
+    cloud_sel = None
+    trans_sel = None
+    for item in cld_and_trans:
+        cloud_sel_width = rm.get_cloud_width(item[0],item[1])
+        if cloud_sel_width < 0.1:
+            cloud_sel = item[0]
+            trans_sel = item[1]
+            grasp_pose = rm.align_pose_to_tcp(trans_sel)
+            grasp_pose = rm.shift_pose_to_grasp(cloud_full_ds,grasp_pose,cloud_sel_width,step_size=0.001)
+            if grasp_pose is not None:
                 break
 
-        Tbc = rm.get_base_to_camera_trans()    
-        Tco = rm.invert_trans(Tbc).dot(item[1])
-        rpy = rm.rotation_matrix_to_RPY(Tco[0:3, 0:3])
+    return rm.pose_mtrx_to_vec(grasp_pose), cloud_sel_width*1.5
 
-
-        if abs(math.degrees(rpy[2])) > 90:
-            trans_sel = rm.rotate_trans(trans_sel,rz=math.radians(180),frame='self')
-            trans_sel_new = rm.rotate_trans(trans_sel,rx=rpy[0],ry=rpy[1],frame='self')
-        else:
-            trans_sel_new = rm.rotate_trans(trans_sel,rx=-rpy[0],ry=-rpy[1],frame='self')
-
-        shift1 = abs(rm.get_distance_estimate(cloud_full_ds)-trans_sel_new[2,3])/2 
-        r = 0.055
-        shift2 = r-math.sqrt(math.pow(r,2)-math.pow(cloud_sel_width/2,2))
-        trans_sel_new = rm.translate_trans(trans_sel_new,z=shift1+shift2, frame='self')
-        pose = rm.trans_matrix_to_vec(trans_sel_new)
-        print(pose)
-        return listToPose(pose)
-    except Exception as e: 
-        print(e)
-        print('here')
-        return listToPose([0.1, -0.114, 0.22, 2.20, 2.223,0])
-#     try:
-#         time.sleep(10)
-#         return listToPose(rm.get_tcp_pose())
-#     except Exception as e: 
-#         print(e)
-#         print('here')
-#         return listToPose([0.1, -0.114, 0.22, 2.20, 2.223,0])
-
-def get_object_info(object):
-	#print("Info requested for object "+object)
-	pose = [0.563,-0.114,0.22,2.20,2.223,0]
-	width = 0.05
-	success = 0
-	pose.extend([width])
-	pose.extend([success])
+def get_object_pose(feature_name):
+    pose, width = get_object_pose_base(feature_name)
+    return listToPose(pose)
+    
+def get_object_info(feature_name):
+	pose, width = get_object_pose_base(feature_name)
+	width = width.tolist()
+	success = 1
+	pose.append(width)
+	pose.append(success)
 	return pose
 
 def open_gripper(force):
 	rm.set_gripper_torque(force)
 	return_value = rm.open_gripper()
+	return bool(return_value)
+
+def close_gripper(force):
+	rm.set_gripper_torque(force)
+	return_value = rm.close_gripper()
 	return bool(return_value)
 
 def set_gripper_width(aperture,force):
@@ -198,11 +181,6 @@ def test():
 	pose.extend([3.1415]) #add width
 	return pose 
 	#return {'Pose' : listToPose(pose), 'Width' : 3.1415}
-
-def update():
-	import os
-	os.system("git pull")
-	return True
 
 print("Starting XML-RPC server on port 8101")
 server = SimpleXMLRPCServer(("", 8101),requestHandler=RequestHandler)

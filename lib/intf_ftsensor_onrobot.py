@@ -3,7 +3,7 @@ import time
 import struct
 import json
 
-class OptoForce:
+class OnRobot:
 
     def __init__(self):
         self.rti = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
