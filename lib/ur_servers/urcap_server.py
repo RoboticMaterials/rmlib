@@ -171,9 +171,11 @@ def set_gripper_width(aperture,force):
 	return bool(return_value)
 
 def stop():
+	import os
 	global quit
 	quit=1
-	sys.exit("Stop request from user")
+	os.system("./lib/ur_servers/stop_urcap_server")
+	#sys.exit("Restarting URCap Server")
 	return True
 
 def test():
@@ -200,4 +202,6 @@ server.register_function(test)
 
 #server.serve_forever()
 while not quit:
+	time.sleep(0.01)
 	server.handle_request()
+
