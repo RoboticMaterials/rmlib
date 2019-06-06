@@ -13,6 +13,8 @@ import traceback
 import math
 from IPython.display import clear_output
 
+feature_lib_path = '/home/nvidia/rmstudio/lib/ur_servers/urcap_feature_lib.json'
+
 quit=0
 
 class RequestHandler(SimpleXMLRPCRequestHandler):
@@ -66,7 +68,7 @@ def set_robot_ip(newaddr):
 	import os
 	from rm_config import rm_config
 	oldaddr=rm_config['robot_arm']['ip_address']
-	os.system("sed -i -e 's/'" + oldaddr +"'\\b/'"+newaddr+"'/g' /home/nvidia/dev_rmstudio/lib/rm_config.py")
+	os.system("sed -i -e 's/'" + oldaddr +"'\\b/'"+newaddr+"'/g' /home/nvidia/rmstudio/lib/rm_config.py")
 	print("Replaced " + oldaddr + " with " + newaddr + " in rm_config")
 	return True
 
@@ -93,7 +95,7 @@ def listToPose(l):
 
 def get_object_defs():
     try:
-        feature_lib = rm.load_feature_lib('/home/nvidia/dev_rmstudio/urcap_server/feature_lib.json')
+        feature_lib = rm.load_feature_lib(feature_lib_path)
         string = ''
         for i in feature_lib:
             string = string + i + '%'
@@ -106,7 +108,7 @@ def get_object_defs():
 
 def get_object_pose_base(feature_name):
     plane_tol = 0.0045
-    feature_lib = rm.load_feature_lib('/home/nvidia/dev_rmstudio/urcap_server/feature_lib.json')
+    feature_lib = rm.load_feature_lib(feature_lib_path)
 
     #Get Cloud
     rm.set_disparity_shift(100)
