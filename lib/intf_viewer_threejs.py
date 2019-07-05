@@ -1,3 +1,6 @@
+# Import rm_config 
+from rm_config import rm_config
+
 import numpy as np
 import pandas as pd
 from pyntcloud import PyntCloud
@@ -270,6 +273,7 @@ class Viewer:
             color: [3,] list or color
                 RGB color.
             """
+            
             box = [
                 { "color" : color,
                   "vertices": [list(vertices[0]), list(vertices[1])]},
@@ -507,9 +511,9 @@ class Viewer:
                 warnings.filterwarnings('always')
             
             if saveToFile:
-                cloud_pc.to_file("/home/nvidia/dev_rmstudio/lib/models/point_cloud.ply")
+                cloud_pc.to_file(rm_config['rmstudio_path']+'lib/html/rm_dashboard/models/point_cloud.ply')
                 df = pd.DataFrame(self.lines)
-                df.to_json('/home/nvidia/dev_rmstudio/lib/models/dem_lines.json')
+                df.to_json(rm_config['rmstudio_path']+'lib/html/rm_dashboard/models/dem_lines.json')
             
         def show(self,height=750,width=1200,view='camera'):
             """ 

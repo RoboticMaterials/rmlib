@@ -1,4 +1,5 @@
 rm_config = {
+    'rmstudio_path' : '/home/nvidia/rmstudio/',
     'import' :
     {
         'end_effector' : True,
@@ -11,10 +12,11 @@ rm_config = {
     'end_effector' : 
     {
         'type' : 'smarthand',
-        'finger_offset': 0.040,
-        'finger_width_outer' : 0.014,
+        'finger_length': 0.040,
+        'finger_width_outer' : 0.015,
         'finger_width_inner' : 0.0, # currently affects nothing
-        'finger_depth' : 0.013
+        'finger_depth' : 0.014,
+        'camera' : 'realsense_d410'
     },
     'robot_arm' : 
     {
@@ -38,7 +40,7 @@ rm_config = {
     },
     'mobile_platform' :
     {
-        'type' : 'mir_100',
+        'type' : 'mir100',
         'ip_address' : '10.1.12'
     },
     'safety_skin' :

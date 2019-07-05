@@ -7,7 +7,7 @@ import open3d
 from rm_config import rm_config
 
 class Cloud_Poses:   
-    def get_cloud_pose(self,cloud, frame='camera'):
+    def get_cloud_pose(self,clouds,frame='camera'):
         """
         Finds the origin of the object cloud.
 
@@ -27,64 +27,78 @@ class Cloud_Poses:
             [r31,r32,r33,tz]\n
             [ 0 , 0 , 0 , 1]
         """
+        # Single Cloud
+        if type(clouds) is not list:
+            cloud_list = [clouds]
+        #List of Clouds
+        else:
+            cloud_list = clouds
+            
+        poses = []
+        for cloud in cloud_list:
+            pca = PCA(n_components=3)
+            pca_cloud = pca.fit_transform(cloud)
+            hull = ConvexHull(pca_cloud[:,:2])
 
-        pca = PCA(n_components=3)
-        pca_cloud = pca.fit_transform(cloud)
-        hull = ConvexHull(pca_cloud[:,:2])
+            max_z = pca_cloud[:,2].min()
+            min_z = pca_cloud[:,2].max()
+            if pca.components_[2,2] < 0:
+                direction = -1
+                max_z = pca_cloud[:,2].max()
+                min_z = pca_cloud[:,2].min()
 
-        max_z = pca_cloud[:,2].min()
-        min_z = pca_cloud[:,2].max()
-        if pca.components_[2,2] < 0:
-            direction = -1
-            max_z = pca_cloud[:,2].max()
-            min_z = pca_cloud[:,2].min()
+            # Find min volume
+            volume_bb = 10000000
+            for simplex in hull.simplices:
+                u = pca_cloud[simplex[0],:2]
+                v = pca_cloud[simplex[1],:2]
+                slope = (v[1] - u[1])/(v[0] - u[0])
+                theta = np.arctan(slope)
+                rot = np.array([[np.cos(theta), -np.sin(theta),0.0],[np.sin(theta), np.cos(theta),0.0],[0.0,0.0,1.0]])
+                pc = pca_cloud.dot(rot)
+                min_x = pc[:,0].min()
+                max_x = pc[:,0].max()
+                min_y = pc[:,1].min()
+                max_y = pc[:,1].max()
+                vol = np.abs(min_x-max_x)*np.abs(min_y-max_y)
+                if vol < volume_bb:
+                    vertices = np.zeros((4,3))
+                    origin = np.array([min_x,min_y,max_z])
+                    if (max_x-min_x > max_y-min_y):
+                        vertices[0,:] = np.array([max_x,min_y,max_z]) - origin 
+                        vertices[1,:] = np.array([min_x,max_y,max_z]) - origin 
+                    else:
+                        vertices[1,:] = np.array([max_x,min_y,max_z]) - origin 
+                        vertices[0,:] = np.array([min_x,max_y,max_z]) - origin
+                    x_offset = (pc[:,0].max() + pc[:,0].min())/2.0
+                    y_offset = (pc[:,1].max() + pc[:,1].min())/2.0
+                    vertices[2,:] = np.array([min_x,min_y,min_z]) - origin  
+                    vertices = vertices.dot(np.linalg.inv(rot))
+                    if frame == 'camera':
+                        translation = np.array([x_offset,y_offset,max_z])      
+                    if frame == 'base':
+                        translation = np.array([x_offset,y_offset,min_z])
+                    translation = translation.dot(np.linalg.inv(rot))
+                    volume_bb = vol
 
-        # Find min volume
-        volume_bb = 10000000
-        for simplex in hull.simplices:
-            u = pca_cloud[simplex[0],:2]
-            v = pca_cloud[simplex[1],:2]
-            slope = (v[1] - u[1])/(v[0] - u[0])
-            theta = np.arctan(slope)
-            rot = np.array([[np.cos(theta), -np.sin(theta),0.0],[np.sin(theta), np.cos(theta),0.0],[0.0,0.0,1.0]])
-            pc = pca_cloud.dot(rot)
-            min_x = pc[:,0].min()
-            max_x = pc[:,0].max()
-            min_y = pc[:,1].min()
-            max_y = pc[:,1].max()
-            vol = np.abs(min_x-max_x)*np.abs(min_y-max_y)
-            if vol < volume_bb:
-                vertices = np.zeros((4,3))
-                origin = np.array([min_x,min_y,max_z])
-                if (max_x-min_x > max_y-min_y):
-                    vertices[0,:] = np.array([max_x,min_y,max_z]) - origin 
-                    vertices[1,:] = np.array([min_x,max_y,max_z]) - origin 
-                else:
-                    vertices[1,:] = np.array([max_x,min_y,max_z]) - origin 
-                    vertices[0,:] = np.array([min_x,max_y,max_z]) - origin
-                x_offset = (pc[:,0].max() + pc[:,0].min())/2.0
-                y_offset = (pc[:,1].max() + pc[:,1].min())/2.0
-                vertices[2,:] = np.array([min_x,min_y,min_z]) - origin  
-                vertices = vertices.dot(np.linalg.inv(rot))
-                if frame == 'camera':
-                    translation = np.array([x_offset,y_offset,max_z])      
-                if frame == 'base':
-                    translation = np.array([x_offset,y_offset,min_z])
-                translation = translation.dot(np.linalg.inv(rot))
-                volume_bb = vol
+            rot = np.array([vertices[0]/np.linalg.norm(vertices[0]),vertices[1]/np.linalg.norm(vertices[1]),vertices[2]/np.linalg.norm(vertices[2])]).T
+            rot_pca = pca.components_.T
+            pose = np.eye(4)
+            pose[:3,:3]= rot_pca.dot(rot)
+            pose[:3,3] = pca.inverse_transform(translation)
+            pose[:3,1] = np.cross(pose[:3,2],pose[:3,0])
 
-        rot = np.array([vertices[0]/np.linalg.norm(vertices[0]),vertices[1]/np.linalg.norm(vertices[1]),vertices[2]/np.linalg.norm(vertices[2])]).T
-        rot_pca = pca.components_.T
-        pose = np.eye(4)
-        pose[:3,:3]= rot_pca.dot(rot)
-        pose[:3,3] = pca.inverse_transform(translation)
-        pose[:3,1] = np.cross(pose[:3,2],pose[:3,0])
-
-        pose = self.rotate_pose(pose,0,0,1.5707, frame='self')
-        if frame == 'base':
-            pose = self.rotate_pose(pose,0,3.14159,0, frame='self')
-        return pose
-    
+            pose = self.rotate_pose(pose,0,0,1.5707, frame='self')
+            if frame == 'base':
+                pose = self.rotate_pose(pose,0,3.14159,0, frame='self')
+                
+            poses.append(pose)
+                
+        if type(clouds) is not list:
+            return poses[0]
+        else:
+            return poses
+            
     def get_cloud_width(self, object_cloud, pose=None):
         """
         Finds width of object
@@ -117,7 +131,7 @@ class Cloud_Poses:
 
         return width
     
-    def shift_pose_to_grasp(self,cloud,object_pose,object_width,step_size=0.005,min_clearance=0.001,output=False):
+    def shift_pose_to_grasp(self,object_cloud,object_pose,object_width=None,step_size=0.005,min_clearance=0.001):
         """
         Shifts tranform from top of object to position for grasping object
 
@@ -138,22 +152,22 @@ class Cloud_Poses:
         transform: [4,4] ndarray
             New transformation matrix for graping object.
         """
-        
-        # Add tolerance to object width
+        if object_width == None:
+            object_width = self.get_cloud_width(object_cloud,object_pose)
         finger_width = object_width + 0.010
         
         # Shift pose towards object by finger offset length
-        in_shift = rm_config['end_effector']['finger_offset']
-        grasp_pose = self.translate_pose(object_pose.copy(),0,0,in_shift,frame='self')
+        in_shift = self.finger_length
+        grasp_pose = self.translate_pose(object_pose,0,0,in_shift,frame='self')
         
         # Create gripper boxes and check if cloud points are inside. Loop thru until boxes clear points
-        gripper_boxes,finger_boxes = self.get_gripper_boxes(grasp_pose,finger_width,output=output)
+        gripper_boxes,finger_boxes = self.get_gripper_boxes(grasp_pose,finger_width)
         out_shift = 0
-        for idx,box in enumerate(gripper_boxes):
-            while self.is_point_in_box(gripper_boxes[idx],cloud).any():
+        for idx, box in enumerate(gripper_boxes):
+            while self.is_point_in_box(gripper_boxes[idx],object_cloud).any():
                 grasp_pose = self.translate_pose(grasp_pose,0,0,-step_size, frame='self')
                 out_shift += step_size
-                gripper_boxes,finger_boxes = self.get_gripper_boxes(grasp_pose,finger_width,output=output)
+                gripper_boxes,finger_boxes = self.get_gripper_boxes(grasp_pose,finger_width)
                 # Check if gripper has shifted out past the object and can no longer grasp it
                 if out_shift >= in_shift-0.001:
                     return None
@@ -161,6 +175,7 @@ class Cloud_Poses:
         # Shift one last time for minimun clearance and return
         grasp_pose = self.translate_pose(grasp_pose,0,0,-min_clearance,frame='self')
         return grasp_pose
+        
 
     def get_gripper_boxes(self, pose, width, output=False):
         """
@@ -202,11 +217,12 @@ class Cloud_Poses:
             [max_x,max_y,min_z]
         """
         
-        #Check if width is greater then max gripper width
+        # Check if width is greater then max gripper width
         if width > 0.108:
             if output == True: print("Object width is greater than max gripper width")
             return None,None
         
+        # Create direction vectors for constructing boxes
         pose = self.rotate_pose(pose,0,0,1.57, frame='self')
         start_point = np.hstack((np.zeros((3,3)), np.ones((3,1))))
         end_point = np.hstack((np.eye(3), np.ones((3,1))))
@@ -223,68 +239,72 @@ class Cloud_Poses:
         z_vec = end_pose[:3,2] - start_pose[:3,2]
         z_vec = z_vec/np.linalg.norm(z_vec)
         
-        pivot_height_1 = ((width/4.0)+0.028)
-        pivot_height_2 = (((0.055**2.0)-((width/2.0)+0.008)**2.0)**0.5)-0.017+self.finger_offset
-        pivot_width_from_center = ((width/2.0)+0.043)
+        # Create externally defined parameters
+        finger_length = self.finger_length
+        finger_width = self.finger_width_outer
+        finger_depth = self.finger_depth
         
         finger_to_pos = 0.055-((0.055**2.0)-(width/2.0)**2.0)**0.5
+        pivot_width_from_center = ((width/2.0)+0.048)
 
+        # Get position from pose
         pos = pose[:3,3]
 
+        # Create the gripper boxes
         fingerbox0 = np.zeros((8,3))
         fingerbox1 = np.zeros((8,3))
         box0 = np.zeros((8,3))
         box1 = np.zeros((8,3))
         box2 = np.zeros((8,3))
         box3 = np.zeros((8,3))
-
-        fingerbox0[0] = pos + (0.007*x_vec) - (((width/2.0)+0.003)*y_vec) - (finger_to_pos*z_vec)
-        fingerbox0[1] = pos + (0.007*x_vec) - ((width/2.0)*y_vec) - (finger_to_pos*z_vec)
-        fingerbox0[2] = fingerbox0[0] - ((0.031+self.finger_offset)*z_vec)
-        fingerbox0[3] = fingerbox0[1] - ((0.031+self.finger_offset)*z_vec)
-        fingerbox0[4] = fingerbox0[0] - (0.016*x_vec)
-        fingerbox0[5] = fingerbox0[1] - (0.016*x_vec)
-        fingerbox0[6] = fingerbox0[2] - (0.016*x_vec)
-        fingerbox0[7] = fingerbox0[3] - (0.016*x_vec)
-
-        fingerbox1[0] = pos + (0.007*x_vec) + (((width/2.0)+0.003)*y_vec) - (finger_to_pos*z_vec)
-        fingerbox1[1] = pos + (0.007*x_vec) + ((width/2.0)*y_vec) - (finger_to_pos*z_vec)
-        fingerbox1[2] = fingerbox1[0] - ((0.031+self.finger_offset)*z_vec)
-        fingerbox1[3] = fingerbox1[1] - ((0.031+self.finger_offset)*z_vec)
-        fingerbox1[4] = fingerbox1[0] - (0.016*x_vec)
-        fingerbox1[5] = fingerbox1[1] - (0.016*x_vec)
-        fingerbox1[6] = fingerbox1[2] - (0.016*x_vec)
-        fingerbox1[7] = fingerbox1[3] - (0.016*x_vec)
-
-        box0[0] = pos + (0.007*x_vec) - (((width/2.0)+0.015)*y_vec) - (finger_to_pos*z_vec)
-        box0[1] = pos + (0.007*x_vec) - ((width/2.0)*y_vec) - (finger_to_pos*z_vec)
-        box0[2] = box0[0] - ((0.031+self.finger_offset)*z_vec)
-        box0[3] = box0[1] - ((0.031+self.finger_offset)*z_vec)
-        box0[4] = box0[0] - (0.016*x_vec)
-        box0[5] = box0[1] - (0.016*x_vec)
-        box0[6] = box0[2] - (0.016*x_vec)
-        box0[7] = box0[3] - (0.016*x_vec)
-
-        box1[0] = pos + (0.007*x_vec) + (((width/2.0)+0.015)*y_vec) - (finger_to_pos*z_vec)
-        box1[1] = pos + (0.007*x_vec) + ((width/2.0)*y_vec) - (finger_to_pos*z_vec)
-        box1[2] = box1[0] - ((0.031+self.finger_offset)*z_vec)
-        box1[3] = box1[1] - ((0.031+self.finger_offset)*z_vec)
-        box1[4] = box1[0] - (0.016*x_vec)
-        box1[5] = box1[1] - (0.016*x_vec)
-        box1[6] = box1[2] - (0.016*x_vec)
-        box1[7] = box1[3] - (0.016*x_vec)
-
-        box2[0] = pos + (0.01*x_vec) - (pivot_width_from_center*y_vec) - ((0.031+self.finger_offset+finger_to_pos)*z_vec)
+        # Right finger box?
+        fingerbox0[0] = pos + ((finger_depth/2.0)*x_vec) - (((width/2.0)+0.003)*y_vec) - (finger_to_pos*z_vec)
+        fingerbox0[1] = pos + ((finger_depth/2.0)*x_vec) - ((width/2.0)*y_vec) - (finger_to_pos*z_vec)
+        fingerbox0[2] = fingerbox0[0] - ((0.031+finger_length)*z_vec)
+        fingerbox0[3] = fingerbox0[1] - ((0.031+finger_length)*z_vec)
+        fingerbox0[4] = fingerbox0[0] - (finger_depth*x_vec)
+        fingerbox0[5] = fingerbox0[1] - (finger_depth*x_vec)
+        fingerbox0[6] = fingerbox0[2] - (finger_depth*x_vec)
+        fingerbox0[7] = fingerbox0[3] - (finger_depth*x_vec)
+        # Left finger box?
+        fingerbox1[0] = pos + ((finger_depth/2.0)*x_vec) + (((width/2.0)+0.003)*y_vec) - (finger_to_pos*z_vec)
+        fingerbox1[1] = pos + ((finger_depth/2.0)*x_vec) + ((width/2.0)*y_vec) - (finger_to_pos*z_vec)
+        fingerbox1[2] = fingerbox1[0] - ((0.031+finger_length)*z_vec)
+        fingerbox1[3] = fingerbox1[1] - ((0.031+finger_length)*z_vec)
+        fingerbox1[4] = fingerbox1[0] - (finger_depth*x_vec)
+        fingerbox1[5] = fingerbox1[1] - (finger_depth*x_vec)
+        fingerbox1[6] = fingerbox1[2] - (finger_depth*x_vec)
+        fingerbox1[7] = fingerbox1[3] - (finger_depth*x_vec)
+        # Right gripper finger box?
+        box0[0] = pos + ((finger_depth/2.0)*x_vec) - (((width/2.0)+finger_width)*y_vec) - (finger_to_pos*z_vec)
+        box0[1] = pos + ((finger_depth/2.0)*x_vec) - ((width/2.0)*y_vec) - (finger_to_pos*z_vec)
+        box0[2] = box0[0] - ((0.031+finger_length)*z_vec)
+        box0[3] = box0[1] - ((0.031+finger_length)*z_vec)
+        box0[4] = box0[0] - (finger_depth*x_vec)
+        box0[5] = box0[1] - (finger_depth*x_vec)
+        box0[6] = box0[2] - (finger_depth*x_vec)
+        box0[7] = box0[3] - (finger_depth*x_vec)
+        # Left gripper finger box?
+        box1[0] = pos + ((finger_depth/2.0)*x_vec) + (((width/2.0)+finger_width)*y_vec) - (finger_to_pos*z_vec)
+        box1[1] = pos + ((finger_depth/2.0)*x_vec) + ((width/2.0)*y_vec) - (finger_to_pos*z_vec)
+        box1[2] = box1[0] - ((0.031+finger_length)*z_vec)
+        box1[3] = box1[1] - ((0.031+finger_length)*z_vec)
+        box1[4] = box1[0] - (finger_depth*x_vec)
+        box1[5] = box1[1] - (finger_depth*x_vec)
+        box1[6] = box1[2] - (finger_depth*x_vec)
+        box1[7] = box1[3] - (finger_depth*x_vec)
+        # Gripper linkage box
+        box2[0] = pos + (0.0115*x_vec) - (pivot_width_from_center*y_vec) - ((0.031+finger_length+finger_to_pos)*z_vec)
         box2[1] = box2[0] + (2.0*pivot_width_from_center*y_vec)
-        box2[2] = pos + (0.01*x_vec) - (pivot_width_from_center*y_vec) - ((0.116+self.finger_offset)*z_vec)
+        box2[2] = pos + (0.0115*x_vec) - (pivot_width_from_center*y_vec) - ((0.116+finger_length)*z_vec)
         box2[3] = box2[2] + (2.0*pivot_width_from_center*y_vec)
-        box2[4] = box2[0] - (0.02*x_vec)
-        box2[5] = box2[1] - (0.02*x_vec)
-        box2[6] = box2[2] - (0.02*x_vec)
-        box2[7] = box2[3] - (0.02*x_vec)
-
-        box3[0] = pos + (0.047*x_vec) - (0.069*y_vec) - ((0.075+self.finger_offset)*z_vec)
-        box3[1] = pos + (0.047*x_vec) + (0.069*y_vec) - ((0.075+self.finger_offset)*z_vec)
+        box2[4] = box2[0] - (0.023*x_vec)
+        box2[5] = box2[1] - (0.023*x_vec)
+        box2[6] = box2[2] - (0.023*x_vec)
+        box2[7] = box2[3] - (0.023*x_vec)
+        # Gipper body box
+        box3[0] = pos + (0.033*x_vec) - (0.05*y_vec) - ((0.075+finger_length)*z_vec)
+        box3[1] = pos + (0.033*x_vec) + (0.05*y_vec) - ((0.075+finger_length)*z_vec)
         box3[2] = box3[0] - (0.14*z_vec)
         box3[3] = box3[1] - (0.14*z_vec)
         box3[4] = box3[0] - (0.08*x_vec)

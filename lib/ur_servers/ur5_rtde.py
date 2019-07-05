@@ -1,8 +1,8 @@
 # NOTE: XMLRPC functions load when the 'start_interfaces' script is run. If you make changes here, the script must be run again
-#       in order for the changes to take effect!
-
+# for the changes to take effect!
 import sys
-sys.path.append('/home/nvidia/rmstudio/lib')
+import os.path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 
 import rtde
 import rtde_config 
@@ -14,10 +14,9 @@ import numpy as np
 import socket
 import time
 import json
-from transforms import *
+# from transforms import *
 
-from rm_config import rm_config # NOTE: This is "rm/interfaces/config.py" , NOT the PyPI pakckage "config"!
-
+from rm_config import rm_config 
 robot_arm_ip = rm_config["robot_arm"]["ip_address"]
 robot_proxy_ip = ni.ifaddresses('eth0')[ni.AF_INET][0]['addr']
 
@@ -47,13 +46,13 @@ if not rtde_proxy.send_output_setup(output_names, output_types):
 
 
 
-def get_camera_transform():
-    # NOTE: XMLRPC can only sends lists (1D/2D) of floats and cannot send Numpy arrays, use 'ndarray.tolist()'
-    tcp_pose = get_tcp_pose()
-    camera_pose = pose_trans( tcp_pose , camera_offset )
-    camera_trans = convert_pose_to_transform( camera_pose )
-    camera_trans_list = camera_trans.tolist() # NOTE: This is needed, else error: "cannot marshal <type 'numpy.ndarray'> objects"
-    return camera_trans_list
+# def get_camera_transform():
+#     # NOTE: XMLRPC can only sends lists (1D/2D) of floats and cannot send Numpy arrays, use 'ndarray.tolist()'
+#     tcp_pose = get_tcp_pose()
+#     camera_pose = pose_trans( tcp_pose , camera_offset )
+#     camera_trans = convert_pose_to_transform( camera_pose )
+#     camera_trans_list = camera_trans.tolist() # NOTE: This is needed, else error: "cannot marshal <type 'numpy.ndarray'> objects"
+#     return camera_trans_list
 
 def get_tcp_pose():
     rtde_proxy.send_start()
@@ -80,7 +79,8 @@ def get_robot_status():
     rtde_proxy.send_start()
     state = rtde_proxy.receive()
     rtde_proxy.send_pause()
-    return state.robot_status_bits
+    bits = state.robot_status_bits
+    return bits
 
 def get_saftey_mode():
     rtde_proxy.send_start()

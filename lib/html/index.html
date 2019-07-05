@@ -1,11 +1,17 @@
 <html>
 <head>
-<script>
-function changeport(){
- window.location.assign(`http://${window.location.hostname}:8888`);
-}
-
-</script>
 </head>
-<body onload="changeport()"></body>
+
+<body>
+    <ul>
+        <li>
+            <a href="rm_dashboard/pages/feature_wizard/index.html">Feature editor</a>
+        </li>
+        <li>
+            <script type="text/javascript">
+            document.write('<a href="' + `http://${window.location.hostname}:8888` + '">RM Studio</a>');
+            </script>
+        </li>
+    </ul>
+</body>
 </html>

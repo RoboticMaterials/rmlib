@@ -52,7 +52,7 @@ class OpenCM:
         
         self.ser.flushInput()
         self.ser.write('o\r'.encode())
-        return int(self.ser.readline().decode())
+        return bool(self.ser.readline().decode())
 
     def close_gripper(self):
         """
@@ -66,9 +66,9 @@ class OpenCM:
         
         self.ser.flushInput()
         self.ser.write('c\r'.encode())
-        return int(self.ser.readline().decode())
+        return bool(self.ser.readline().decode())
 
-
+    
     def set_gripper_torque(self,torque):
         """
         Set torque of both gripper fingers.
@@ -88,7 +88,7 @@ class OpenCM:
         elif torque < 0:
             torque = 0
         self.ser.write('t{}\r'.format(torque).encode())
-        return 1
+        return True
 
     def set_gripper_torque_right(self,torque):
         """
@@ -110,7 +110,7 @@ class OpenCM:
             torque = 0
         self.ser.flushInput()
         self.ser.write(('){}\r'.format(torque)).encode())
-        return 1
+        return True
 
     def set_gripper_torque_left(self,torque):
         """
@@ -132,7 +132,7 @@ class OpenCM:
             torque = 0
         self.ser.flushInput()
         self.ser.write(('({}\r'.format(torque)).encode())
-        return 1
+        return True
 
     def set_gripper_width(self,width,width2=None):
         """
@@ -179,9 +179,9 @@ class OpenCM:
             self.ser.write(('w{:03d}\r'.format(width)).encode())
             
         try:
-            return int(self.ser.readline().decode()[0])
+            return bool(self.ser.readline().decode()[0])
         except Exception:
-            return 1
+            return True
 
     def set_gripper_width_right(self,width):
         """
@@ -199,10 +199,10 @@ class OpenCM:
         width = int(float(width) * 2000.0)
         if width > self.MAX_WIDTH:
             width = self.MAX_WIDTH
-        elif width < self.MIN_WIDTH:
+        elif width < self.MIN_WIDH:
             width = self.MIN_WIDTH
         self.ser.write(('>{}\r'.format(width)).encode())
-        return int(self.ser.readline().decode()[0])
+        return bool(self.ser.readline().decode()[0])
 
 
     def set_gripper_width_left(self,width):
@@ -221,11 +221,11 @@ class OpenCM:
         width = int(float(width) * 2000.0)
         if width > self.MAX_WIDTH:
             width = self.MAX_WIDTH
-        elif width < self.MIN_WIDTH:
+        elif width < self.MIN_WIDH:
             width = self.MIN_WIDTH
         self.ser.flushInput()
         self.ser.write(('<{}\r'.format(width)).encode())
-        return int(self.ser.readline().decode()[0])
+        return bool(self.ser.readline().decode()[0])
 
     def set_min_object_size(self,object_size):
         """
@@ -357,7 +357,9 @@ class OpenCM:
     def get_motor_temperature(self):
         self.ser.flushInput()
         self.ser.write('T\r'.encode())
-        return self.ser.readline().decode()[:-2]
+        string = self.ser.readline().decode()[:-2]
+        temps = [int(digit) for digit in string.split(' ')]
+        return temps
 
 #===============
 #NOT OPEN SOURCE 

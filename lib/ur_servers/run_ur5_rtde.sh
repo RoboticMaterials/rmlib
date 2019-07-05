@@ -10,5 +10,5 @@ close_running
 
 cd ~/rmstudio/lib/ur_servers
 python2 ur5_rtde.py &
-echo "Interfaces running"
+echo "RTDE Server Running"
 

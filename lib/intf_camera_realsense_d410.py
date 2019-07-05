@@ -43,16 +43,16 @@ class RealSense:
         depth_table.depthUnits = 100
         self.camera_controller.set_depth_table(depth_table)
         
-        config = rs.config()
-        config.enable_stream(rs.stream.depth,x_res,y_res,rs.format.z16,frame_rate)
-        config.enable_stream(rs.stream.infrared,x_res,y_res,rs.format.rgb8,frame_rate)
+        self.config = rs.config()
+        self.config.enable_stream(rs.stream.depth,x_res,y_res,rs.format.z16,frame_rate)
+        self.config.enable_stream(rs.stream.infrared,x_res,y_res,rs.format.rgb8,frame_rate)
         self.depth_sensor.set_option(rs.option.visual_preset, visual_preset)
         try:
-            profile = self.pipe.start(config)
+            self.profile = self.pipe.start(self.config)
         except RuntimeError as rte:
             if 'Device or resource busy' in str(rte):
                 raise RuntimeError("Camera in use by another Notebook")
-        video_stream_profile = profile.get_stream(rs.stream.depth).as_video_stream_profile()
+        video_stream_profile = self.profile.get_stream(rs.stream.depth).as_video_stream_profile()
         intrinsics = video_stream_profile.get_intrinsics()
         self.fx = intrinsics.fx
         self.fy = intrinsics.fy
@@ -68,6 +68,10 @@ class RealSense:
         """ Disconnect camera """
         self.pipe.stop()
         self.running = False
+        
+    def resume_camera(self):
+        self.pipe.start(self.config)
+        self.running = True
     
     def restart_camera(self):
         self.pipe.stop()
@@ -104,6 +108,7 @@ class RealSense:
         power: float
             laser power
         """
+        
         if power > 1 or power < 0:
             raise RuntimeError("Set laser power from 0-1")
         power = power*150
@@ -223,8 +228,18 @@ class RealSense:
     def get_white_balance_gain(self):
         return self.depth_sensor.get_option(rs.option.gain)
     
+    def get_camera_temperature(self):
+        dev = self.profile.get_device()
+        depth_sensor = dev.first_depth_sensor()
+        tempProj = depth_sensor.get_option(rs.option.projector_temperature)
+        tempAsic = depth_sensor.get_option(rs.option.asic_temperature)
+        return tempProj, tempAsic
+    
     def get_snapshot(self):
-        self.set_laser_state(True)
+        
+        if self.get_laser_state() == False:
+            self.set_laser_state(True)
+            
         frames = self.pipe.wait_for_frames()
         
         depth = frames.get_depth_frame()
@@ -287,7 +302,7 @@ class RealSense:
         return np.asanyarray(ir_data)
     
     
-    def get_pixles_per_meter(self, distance, res=(720,1280)):
+    def get_pixels_per_meter(self, distance, res=(720,1280)):
         half_width = distance * (res[0] - self.cy) / self.fy
         scale = res[0]/(2.0*half_width)
         return scale
@@ -295,13 +310,13 @@ class RealSense:
     def convert_depth_image_to_point_cloud(self, depth, height=None):
         rows, cols = depth.shape
         c, r = np.meshgrid(np.arange(cols), np.arange(rows), sparse=True)
-        z = depth / 10000.0
-        x = z * (c - self.cx) / self.fx
-        y = z * (r - self.cy) / self.fy
+        z = np.divide(depth,10000.0)
+        x = np.divide(np.multiply(z,np.subtract(c,self.cx)),self.fx)
+        y = np.divide(np.multiply(z,np.subtract(r,self.cy)),self.fy)
         if height:
-            z = np.zeros(depth.shape)+height
+            z = np.add(np.zeros(depth.shape),height)
         pts = np.dstack((x, y, z)).reshape(-1,3)
-        cloud = pts[np.where(np.all(np.logical_not(np.equal(pts,np.zeros(3)), axis=1)))[0]]
+        cloud = pts[np.where(np.all(np.logical_not(np.equal(pts,np.zeros(3))), axis=1))[0]]
         return cloud.dot(np.array([[-1,0,0],[0,-1,0],[0,0,1]]))
 
     def convert_point_cloud_to_depth_image(self, cloud):
@@ -311,13 +326,66 @@ class RealSense:
         y = cloud[:,1]
         z = cloud[:,2]
         
-        c = np.floor(x*self.fx/z + self.cx).astype(int)
-        r = np.floor(y*self.fy/z + self.cy).astype(int)
+        c = np.floor(np.add(np.divide(np.multiply(x,self.fx),z),self.cx)).astype(int)
+        r = np.floor(np.add(np.divide(np.multiply(y,self.fy),z),self.cy)).astype(int)
         idxs = np.where(np.logical_and(np.logical_and(c>=0, c<1280),np.logical_and(r>=0, r<720)))
         c = c[idxs]
         r = r[idxs]
         z = z[idxs]
         
-        z = z*10000.0
+        z = np.multiply(z,10000.0)
         image[r,c] = z
         return image
+
+#     def convert_depth_image_to_color_point_cloud(self, depth, ir):
+#         rows, cols = depth.shape
+#         c, r = np.meshgrid(np.arange(cols), np.arange(rows), sparse=True)
+        
+#         z = depth / 10000.0
+#         x = z * (c - self.cx) / self.fx
+#         y = z * (r - self.cy) / self.fy
+#         pts = np.dstack((x, y, z)).reshape(-1,3)
+        
+#         # INCOMPLETE
+        
+#         cloud = pts[np.where(np.all(np.logical_not(np.equal(pts,np.zeros(3)), axis=1)))[0]]
+#         return cloud.dot(np.array([[-1,0,0],[0,-1,0],[0,0,1]]))
+
+
+##### EXCLUDE FROM RMSTUDIO #####
+
+    def get_fast_snapshot(self):
+
+        if not self.depth_sensor.supports(rs.option.emitter_enabled):
+            raise NameError('Emmitter not supported')
+
+        if self.get_laser_state() == False:
+            self.depth_sensor.set_option(rs.option.emitter_enabled,1.0)
+            time.sleep(0.5)
+
+        frames = self.pipe.wait_for_frames()
+
+        depth = frames.get_depth_frame()
+        depth = self.temporal_filter.process(depth)
+        depth_data = np.asanyarray(depth.get_data())
+
+        points = self.pc.calculate(depth)
+
+        vtx = np.asanyarray(points.get_vertices())
+        pts = np.vstack((vtx[:]['f0'],vtx[:]['f1'],vtx[:]['f2'])).T
+        cloud = pts[np.where(np.all(np.equal(pts,np.zeros(3)), axis=1)==False)[0]]
+        cloud = cloud.dot(np.array([[-1,0,0],[0,-1,0],[0,0,1]]))
+
+        self.depth_sensor.set_option(rs.option.emitter_enabled,0.0)
+        time.sleep(0.5)
+        ir_data = self.get_ir_image()
+
+        self.depth_sensor.set_option(rs.option.emitter_enabled,1.0)
+
+        return cloud,depth_data,ir_data
+    
+    def get_fast_depth(self):
+        frames = self.pipe.wait_for_frames()
+        depth = frames.get_depth_frame()
+        depth_data = depth.get_data()
+        return np.asanyarray(depth_data)

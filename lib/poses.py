@@ -103,7 +103,10 @@ class Poses:
         z = matrix[2,-1] 
 
         return [float(x),float(y),float(z),float(rv1),float(rv2),float(rv3)]
-    
+
+
+
+
     def transform_points(self,points,pose):
         """
         Transform points by a transformation matrix.
@@ -127,7 +130,7 @@ class Poses:
         points = np.hstack((points,np.ones((points.shape[0],1))))
         points = points.dot(pose.T)[:,:3]
         return points
-    
+
     def translate_pose(self, pose, x=0.0, y=0.0, z=0.0, frame='base'):
         """
         Alters a transformation matrix, translating it by some amount along \
@@ -172,6 +175,9 @@ class Poses:
 
             pose_translate = np.copy(pose)
             pose_translate[:3,3] = pose_translate[:3,3]+translation
+            
+        else:
+            raise NameError('Invalid Reference Frame [self, base]')
 
         return pose_translate
 
@@ -210,7 +216,6 @@ class Poses:
         pose_rotate = np.copy(pose)
         if frame == 'self':
             pose_rotate[:3,:3] = pose_rotate[:3,:3].dot(rx_mat).dot(ry_mat).dot(rz_mat)
-          
         elif frame == 'base':
             pose_rotate[:3,:3] = rx_mat.dot(ry_mat).dot(rz_mat).dot(pose_rotate[:3,:3])
 
@@ -269,6 +274,7 @@ class Poses:
 
         return np.array([x, y, z])
 
+    
     def rpy_to_rotation_mtrx(self, theta):
         # Calculates Rotation Matrix given euler angles
         R_x = np.array([[1,         0,                  0                   ],
@@ -286,55 +292,89 @@ class Poses:
         R = np.dot(R_z, np.dot( R_y, R_x ))
         return R
     
-    def cartesian_mtrx_of_poses(self, start_pose, x_points=1, x_space=0.01, y_points=1, y_space=0.01,  z_points=1, z_space=0.01, frame='tool', output=None):
-        matrix = np.zeros((z_points,y_points,x_points,4,4))
-        for z in range(z_points):
-            for y in range(y_points):
-                for x in range(x_points):
+    def cartesian_mtrx_of_poses(self, start_pose, x_range, y_range, z_range, frame='tool', output=None):
+        matrix = np.zeros((len(x_range),len(y_range),len(z_range),4,4))
+        
+        for i, x in enumerate(x_range):
+            for j, y in enumerate(y_range):
+                for k, z in enumerate(z_range):
+                    
                     if frame == 'base':
-                        matrix[z,y,x,:] = self.translate_pose(start_pose, x=x*x_space, y=y*y_space, z=z*z_space, frame='base')
+                        matrix[i,j,k,:] = self.translate_pose(start_pose, x=x, y=y, z=z, frame='base')
                     if frame == 'tool':
-                        matrix[z,y,x,:] = self.translate_pose(start_pose, x=x*x_space, y=y*y_space, z=z*z_space, frame='self')
+                        matrix[i,j,k,:] = self.translate_pose(start_pose, x=x, y=y, z=z, frame='self')
 
         if output == 'all':
             shape = matrix.shape
             view = self.PC_Viewer()
-            for z in range(shape[0]):
-                for y in range(shape[1]):
-                    for x in range(shape[2]):
-                        view.add_axis(matrix[z,y,x,:])
+            for i in range(shape[0]):
+                for j in range(shape[1]):
+                    for k in range(shape[2]):
+                        view.add_axis(matrix[i,j,k,:])
+            view.show()
 
         return matrix
 
-    def cylindircal_mtrx_of_poses(self, start_pose, r_0=0, r_points=1, r_space=0.01, theta_points=1, theta_space=10, z_points=1, z_space=0.01, frame='tool', cylinder_axis='y', output=None):
-        matrix = np.zeros((z_points,theta_points,r_points,4,4))
-        for z in range(z_points):
-            for theta in range(theta_points):
-                for r in range(r_points):
-                    r_i = r*r_space+r_0
-                    theta_i = theta*theta_space
-                    z_i = z*z_space
-                    x = r_i*math.cos(math.radians(theta_i))
-                    y = r_i*math.sin(math.radians(theta_i))
-                    if cylinder_axis == 'y':
-                        if frame == 'tool':
-                            pose = self.rotate_pose(start_pose, ry=math.radians(theta_i), frame='self')
-                            matrix[z,theta,r,:] = self.translate_pose(pose, x=y, y=z_i, z=x, frame='self')
+    def cylindircal_mtrx_of_poses(self, start_pose, r_range, theta_range, z_range, frame='tool', cylinder_axis='y', output=None):
+        matrix = np.zeros((len(r_range),len(theta_range),len(z_range),4,4))
+        
+        for i, r in enumerate(r_range):
+            for j, theta in enumerate(theta_range):
+                for k, z in enumerate(z_range):
+
+                    if frame == 'tool':
+                        pose = self.translate_pose(start_pose, z=r_range[0], frame='self')
+                        if cylinder_axis == 'y':
+                            pose = self.rotate_pose(pose, ry=math.radians(theta), frame='self')
+                            matrix[i,j,k,:] = self.translate_pose(pose, y=z, z=-r, frame='self')
+                        elif cylinder_axis == 'x':
+                            pose = self.rotate_pose(pose, rx=math.radians(theta), frame='self')
+                            matrix[i,j,k,:] = self.translate_pose(pose, x=z, z=-r, frame='self')
+
         if output == 'all':
             shape = matrix.shape
             view = self.PC_Viewer()
-            for z in range(shape[0]):
-                for theta in range(shape[1]):
-                    for r in range(shape[2]):
-                        view.add_axis(matrix[z,theta,r,:])
+            for i in range(shape[0]):
+                for j in range(shape[1]):
+                    for k in range(shape[2]):
+                        view.add_axis(matrix[i,j,k,:])
 
             view.show()
         return matrix
 
-    def align_pose_to_tcp(self,pose):
-        Tbc = self.get_base_to_camera_pose()    
-        Tco = self.invert_pose(Tbc).dot(pose)
-        rpy = self.rotation_mtrx_to_rpy(Tco[0:3, 0:3])
+    def spherical_mtrx_of_poses(self, start_pose, r_range, theta_range, phi_range, frame='tool', output=None):
+            matrix = np.zeros((len(phi_range),len(theta_range),len(r_range),4,4))
+
+            for i, phi in enumerate(phi_range):
+                for j, theta in enumerate(theta_range):
+                    for k, r in enumerate(r_range):
+
+                        if frame == 'tool':
+                            pose = self.translate_pose(start_pose, z=r_range[0], frame='self')
+                            pose = self.rotate_pose(pose, ry=math.radians(phi), rx=math.radians(theta), frame='self')
+                            matrix[i,j,k,:] = self.translate_pose(pose, z=-r, frame='self')
+
+            if output == 'all':
+                shape = matrix.shape
+                view = self.PC_Viewer()
+                for i in range(shape[0]):
+                    for j in range(shape[1]):
+                        for k in range(shape[2]):
+                            view.add_axis(matrix[i,j,k,:])
+
+                view.show()
+            return matrix
+    
+    def align_pose_to_tcp(self,pose,frame='base'):
+
+        if frame == 'base':
+            Tbc = self.get_base_to_camera_pose()    
+            Tco = self.invert_pose(Tbc).dot(pose)
+            rpy = self.rotation_mtrx_to_rpy(Tco[0:3, 0:3])
+        elif frame == 'tool':
+            rpy = self.rotation_mtrx_to_rpy(pose.copy()[0:3, 0:3])
+        else:
+            return None
 
         if abs(math.degrees(rpy[2])) > 90:
             pose = self.rotate_pose(pose,rz=math.radians(180),frame='self')
@@ -343,4 +383,4 @@ class Poses:
             pose_new = self.rotate_pose(pose,rx=-rpy[0],ry=-rpy[1],frame='self')
         
         return pose_new
-    
+

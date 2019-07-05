@@ -96,18 +96,23 @@ class Movements:
         ja[joint] = 0
         self.set_joint_angles(ja)
 
-    def move_through_mtrx_of_poses(self, mtrx_of_poses, function, method='123', path='sequential',speed_per=None):
+    def move_through_mtrx_of_poses(self, mtrx_of_poses, function, method='123', path='sequential',speed_per=None, accel_per=None):
         shape = mtrx_of_poses.shape
         if path == 'sequential':
             for i in range(shape[0]):
                 for j in range(shape[1]):
                     for k in range(shape[2]):
-                        if method == "123": self.movej(mtrx_of_poses[i,j,k,:], speed_per=speed_per, accel_per = 0.8)
-                        if method == "132": self.movej(mtrx_of_poses[i,k,j,:], speed_per=speed_per, accel_per = 0.8)
-                        if method == "213": self.movej(mtrx_of_poses[j,i,k,:], speed_per=speed_per, accel_per = 0.8)
-                        if method == "231": self.movej(mtrx_of_poses[j,k,i,:], speed_per=speed_per, accel_per = 0.8)
-                        if method == "312": self.movej(mtrx_of_poses[k,i,j,:], speed_per=speed_per, accel_per = 0.8)
-                        if method == "321": self.movej(mtrx_of_poses[k,j,i,:], speed_per=speed_per, accel_per = 0.8)
+                        
+                        if method == "123":# self.movej(mtrx_of_poses[i,j,k,:], speed_per=speed_per, accel_per = accel_per)
+                            try:
+                                self.movej(mtrx_of_poses[i,j,k,:], speed_per=speed_per, accel_per = accel_per)
+                            except Exception:
+                                print('Failed to move')
+                        if method == "132": self.movej(mtrx_of_poses[i,k,j,:], speed_per=speed_per, accel_per = accel_per)
+                        if method == "213": self.movej(mtrx_of_poses[j,i,k,:], speed_per=speed_per, accel_per = accel_per)
+                        if method == "231": self.movej(mtrx_of_poses[j,k,i,:], speed_per=speed_per, accel_per = accel_per)
+                        if method == "312": self.movej(mtrx_of_poses[k,i,j,:], speed_per=speed_per, accel_per = accel_per)
+                        if method == "321": self.movej(mtrx_of_poses[k,j,i,:], speed_per=speed_per, accel_per = accel_per)
                         function()
 
         if path == 'optimal':
@@ -120,12 +125,12 @@ class Movements:
                     if not k_rev: k_range = range(shape[2])
                     else: k_range = reversed(range(shape[2]))
                     for k in k_range:
-                        if method == "123": self.movej(mtrx_of_poses[i,j,k,:], speed_per=speed_per, accel_per = 0.8)
-                        if method == "132": self.movej(mtrx_of_poses[i,k,j,:], speed_per=speed_per, accel_per = 0.8)
-                        if method == "213": self.movej(mtrx_of_poses[j,i,k,:], speed_per=speed_per, accel_per = 0.8)
-                        if method == "231": self.movej(mtrx_of_poses[j,k,i,:], speed_per=speed_per, accel_per = 0.8)
-                        if method == "312": self.movej(mtrx_of_poses[k,i,j,:], speed_per=speed_per, accel_per = 0.8)
-                        if method == "321": self.movej(mtrx_of_poses[k,j,i,:], speed_per=speed_per, accel_per = 0.8)
+                        if method == "123": self.movej(mtrx_of_poses[i,j,k,:], speed_per=speed_per, accel_per = accel_per)
+                        if method == "132": self.movej(mtrx_of_poses[i,k,j,:], speed_per=speed_per, accel_per = accel_per)
+                        if method == "213": self.movej(mtrx_of_poses[j,i,k,:], speed_per=speed_per, accel_per = accel_per)
+                        if method == "231": self.movej(mtrx_of_poses[j,k,i,:], speed_per=speed_per, accel_per = accel_per)
+                        if method == "312": self.movej(mtrx_of_poses[k,i,j,:], speed_per=speed_per, accel_per = accel_per)
+                        if method == "321": self.movej(mtrx_of_poses[k,j,i,:], speed_per=speed_per, accel_per = accel_per)
                         function()
                     k_rev = not k_rev 
                 j_rev = not j_rev 

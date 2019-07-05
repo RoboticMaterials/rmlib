@@ -4,6 +4,9 @@ from sklearn import linear_model
 from sklearn.decomposition import PCA
 from scipy.spatial import ConvexHull
 
+from pyntcloud import PyntCloud 
+import pandas as pd 
+
 class Cloud_Processing:
     
     def downsample_cloud(self,cloud, leaf_size=0.005):
@@ -141,7 +144,7 @@ class Cloud_Processing:
         inner_rec = self.generate_rect(feature['pose'],feature['inner_dimensions'])
         return self.crop_cloud_rect(cloud,inner_rec)
 
-    def sort_clouds_height(self,clouds):
+    def sort_clouds_distance(self,clouds):
         """
         Sorts clouds based on their maximum height.
 
@@ -152,7 +155,7 @@ class Cloud_Processing:
 
         Returns
         -------
-        sorted_clouds: list of k [n,3] ndarrays corrisponding to clouds sorted from highest to lowest maximum height.
+        sorted_clouds: list of k [n,3] ndarrays corrisponding to clouds sorted from closest to furthest.
 
         """
 
@@ -864,7 +867,7 @@ class Cloud_Processing:
 
         return collision
 
-    def is_point_in_box(self,box,point):
+    def is_point_in_box(self, box, point):
         """
         Check if proposed grasp will collide with points in cloud.
 
@@ -888,7 +891,7 @@ class Cloud_Processing:
         collision: [n,] ndarray of booleans
             True if the point is within the box.
         """
-
+    
         AA_pose = self.get_pose_for_AABB(box)
         AABB = self.transform_points(box,AA_pose)
         AA_point = self.transform_points(point,AA_pose)
@@ -897,7 +900,7 @@ class Cloud_Processing:
         y_check = np.logical_and(AA_point[:,1] >= AABB[:,1].min(), AA_point[:,1] <= AABB[:,1].max())
         z_check = np.logical_and(AA_point[:,2] >= AABB[:,2].min(), AA_point[:,2] <= AABB[:,2].max())
 
-        return np.logical_and(x_check,np.logical_and(y_check,z_check))
+        return np.logical_and(x_check,np.logical_and(y_check,z_check))    
     
     def generate_box(self, t, dim):
         #TODO add origin options
@@ -937,7 +940,21 @@ class Cloud_Processing:
         rec = self.transform_points(rec,t)
         return rec
 
+    def is_cloud_on_fov_edge(self,cloud,tolerance=50):
+        
+        depth_img = self.convert_point_cloud_to_depth_image(cloud)
+        rows, cols = depth_img.shape
+        baseline = 0.055
+        hrz_fov = 69.4
+        distance = self.get_distance_estimate(cloud.copy())
+        # Calculate region of bad data based on distance from scene
+        bad_data_ratio = baseline/(2*distance*np.tan(np.deg2rad(hrz_fov/2)))
+        bad_data_edge = cols - cols*bad_data_ratio
+        return (depth_img[0:tolerance,:] > 0).any() or (depth_img[:,int(bad_data_edge-tolerance):int(bad_data_edge)] > 0).any() or (depth_img[:,0:tolerance] > 0).any() or (depth_img[-tolerance:,:] > 0).any()
 
-
-
-
+    def remove_cut_off_clouds(self,clouds,tolerance=30):
+        
+        for idx,cloud in reversed(list(enumerate(clouds))):
+            if self.is_cloud_on_fov_edge(cloud,tolerance):
+                del clouds[idx]
+        return clouds

@@ -6,19 +6,9 @@ import time
 import numpy as np
 import math
 
-class UR5:
+class URSIM:
     def __init__(self):
-        # Run rtde server in pyhton 2
-        subprocess.call(self.rmstudio_path+'lib/ur_servers/run_ur5_rtde.sh')
-        
-        # Connect to rtde server as xmlrpc client
-        ip = ni.ifaddresses('eth0')[ni.AF_INET][0]['addr']
-        self.proxy = xmlrpc.client.ServerProxy("http://{}:8001/RPC2".format(ip))
-        
-        # Start socket to ur5
-        self.s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-        self.s.connect((self.robot_arm_ip, 30003))
-        time.sleep(0.05)
+        return True
     
     def dummy_stop(self):
         return False 
@@ -34,7 +24,7 @@ class UR5:
             [x, y, z, rX, rY, rZ]
         
         """
-        return self.proxy.get_tcp_pose()
+        return [0,0,0,0,0,0]
     
     def get_tcp_pose(self):
         """ 
@@ -60,7 +50,7 @@ class UR5:
             [nx, ny, nz, rx, ry, rz]
         
         """
-        return self.proxy.get_tcp_force()
+        return [0,0,0,0,0,0]
     
     def get_joint_angles(self):
         """ 
@@ -73,25 +63,9 @@ class UR5:
             [base, shoulder, elbow, wrist_1, wrist_2, wrist_3]
         
         """
-        return self.proxy.get_joint_angles()  
-    
-    def send_command_to_robot(self, command):
-        self.s.send(command)
-        time.sleep(0.1)
-
-    def wait_until_robot_is_finished(self, stop_condition='dummy'):
-        if stop_condition == 'dummy':
-            stop_condition = self.dummy_stop
-        while self.proxy.get_robot_status() == 3:
-            if stop_condition():
-                self.movel(self.proxy.get_tcp_pose())
-                break
-                
-    def move(self, movement, stop_condition='dummy'):
-        self.send_command_to_robot(movement)
-        self.wait_until_robot_is_finished(stop_condition=stop_condition)
+        return [0,0,0,0,0,0]
            
-    def movej(self, target, speed=None, accel=None, speed_per=None, accel_per=None, frame="base", stop_condition='dummy'):
+    def movej(self,target,speed=None,accel=None,speed_per=None,accel_per=None,frame="base",stop_condition='dummy'):
         """ 
         Move the arm to the target pose in linear joint space. Note: if no speed or acceleration is set \
         The robot will move at the default speed and acceleration, set in rm_config.
@@ -120,43 +94,11 @@ class UR5:
             
         Return
         ------
-        True
+        1
         """
-        
-        #Select speed value
-        if speed_per is not None:
-            speed = speed_per*self.arm_max_joint_speed
-        elif speed is not None:
-            pass
-        else:
-            speed = self.arm_default_joint_speed     
-        #Select acceleration value    
-        if accel_per is not None:
-            accel = accel_per*self.arm_max_joint_accel
-        elif accel is not None:
-            pass
-        else:
-            accel = self.arm_default_joint_accel
-        #Limit speed to max value
-        if speed > self.arm_max_joint_speed:
-            speed = self.arm_max_joint_speed
-        #Limit acceleration to max value
-        if accel > self.arm_max_joint_accel:
-            accel = self.arm_max_joint_accel
-    
-        if frame=="tool":
-            if(type(target)==list and len(target) == 6):
-                target = self.pose_vec_to_mtrx(target)
-            target = self.get_tcp_pose().dot(target)
-        
-        if type(target) == np.ndarray and target.shape == (4,4): 
-            target = self.pose_mtrx_to_vec(target)
-            
-        movement = ("movej(p{0}, a={1}, v={2})".format(target,accel,speed) + "\n").encode()
-        self.move(movement,stop_condition)
         return True
     
-    def movel(self, target, speed=None, accel=None, speed_per=None, accel_per=None, frame="base", stop_condition='dummy'):
+    def movel(self,target,speed=None,accel=None,speed_per=None,accel_per=None,frame="base",stop_condition='dummy'):
         """ 
         Move the arm in a linear tcp space to the target pose. Note: if no speed or acceleration is set \
         The robot will move at the default speed and acceleration, set in rm_config.
@@ -185,41 +127,12 @@ class UR5:
             
         Return
         ------
-        True
+        1
         """
         
-        #Select speed value
-        if speed_per is not None:
-            speed = speed_per*self.arm_max_linear_speed
-        elif speed is not None:
-            pass
-        else:
-            speed = self.arm_default_linear_speed     
-        #Select acceleration value    
-        if accel_per is not None:
-            accel = accel_per*self.arm_max_linear_accel
-        elif accel is not None:
-            pass
-        else:
-            accel = self.arm_default_linear_accel
-        #Limit speed to max value
-        speed = min(speed,self.arm_max_linear_speed)
-        #Limit acceleration to max value
-        accel = min(accel,self.arm_max_linear_accel)
-        
-        if frame=="tool":
-            if(type(target)==list and len(target) == 6):
-                target = self.pose_vec_to_mtrx(target)
-            target = self.get_tcp_pose().dot(target)
-        
-        if type(target) == np.ndarray and target.shape == (4,4): 
-            target = self.pose_mtrx_to_vec(target)
-        
-        movement = ("movel(p{0}, a={1}, v={2})".format(target,accel,speed) + "\n").encode()
-        self.move(movement,stop_condition)
         return True
     
-    def movep(self, target, speed=None, accel=None, speed_per=None, accel_per=None, radius=0.0, frame="base", stop_condition=dummy_stop):
+    def movep(self,target,speed=None,accel=None,speed_per=None,accel_per=None,radius=0.0,frame="base",stop_condition=dummy_stop):
         """ Move the tool linearly with constant speed with circular blends. Note: if no speed or acceleration is set \
         The robot will move at the default speed and acceleration, set in rm_config.
         
@@ -247,43 +160,12 @@ class UR5:
             
         Return
         ------
-        True
+        1
         """
-        
-        #Select speed value
-        if speed_per is not None:
-            speed = speed_per
-        elif speed is not None:
-            pass
-        else:
-            speed = self.arm_default_linear_speed     
-        #Select acceleration value    
-        if accel_per is not None:
-            accel = accel_per
-        elif accel is not None:
-            pass
-        else:
-            accel = self.arm_default_linear_accel
-        #Limit speed to max value
-        if speed > self.arm_max_linear_speed:
-            speed = self.arm_max_linear_speed
-        #Limit acceleration to max value
-        if accel > self.arm_max_linear_accel:
-            accel = self.arm_max_linear_accel
 
-        if frame=="tool":
-            if(type(target)==list and len(target) == 6):
-                target = self.pose_vec_to_mtrx(target)
-            target = self.get_tcp_pose().dot(target)
-        
-        if type(target) == np.ndarray and target.shape == (4,4): 
-            target = self.pose_mtrx_to_vec(target)
-            
-        movement = ("movep(p{0}, a={1}, v={2}, r={3})".format(target,accel,speed,radius) + "\n").encode()
-        self.move(movement,stop_condition)
         return True
     
-    def set_joint_angles(self, target, speed=None, accel=None, speed_per=None, accel_per=None, stop_condition='dummy'):
+    def set_joint_angles(self,target,speed=None,accel=None,speed_per=None,accel_per=None,stop_condition='dummy'):
         """ 
         Move the arm in linear joint space to the target joint angles. Note: if no speed or acceleration is set \
         The robot will move at the default speed and acceleration, set in rm_config.
@@ -307,37 +189,11 @@ class UR5:
             
         Return
         ------
-        True
+        1
         """
-        
-        #Select speed value
-        if speed_per is not None:
-            speed = speed_per
-        elif speed is not None:
-            pass
-        else:
-            speed = self.arm_default_joint_speed     
-        #Select acceleration value    
-        if accel_per is not None:
-            accel = accel_per
-        elif accel is not None:
-            pass
-        else:
-            accel = self.arm_default_joint_accel
-        #Limit speed to max value
-        if speed > self.arm_max_joint_speed:
-            speed = self.arm_max_joint_speed
-        #Limit acceleration to max value
-        if accel > self.arm_max_joint_accel:
-            accel = self.arm_max_joint_accel
-        
-        if isinstance(target, np.ndarray):
-            target = target.tolist()
-        movement = ("movej({0}, a={1}, v={2})".format(target,accel,speed) + "\n").encode()
-        self.move(movement,stop_condition)
         return True
     
-    def set_joint_angles_l(self, target, speed=None, accel=None, speed_per=None, accel_per=None, stop_condition='dummy'):
+    def set_joint_angles_l(self,target,speed=None,accel=None,speed_per=None,accel_per=None,stop_condition='dummy'):
         """ 
         Move the arm in linear tool space to the target joint angles. Note: if no speed or acceleration is set \
         The robot will move at the default speed and acceleration, set in rm_config.
@@ -361,34 +217,9 @@ class UR5:
             
         Return
         ------
-        True
+        1
         """
         
-        #Select speed value
-        if speed_per is not None:
-            speed = speed_per
-        elif speed is not None:
-            pass
-        else:
-            speed = self.arm_default_linear_speed     
-        #Select acceleration value    
-        if accel_per is not None:
-            accel = accel_per
-        elif accel is not None:
-            pass
-        else:
-            accel = self.arm_default_linear_accel
-        #Limit speed to max value
-        if speed > self.arm_max_linear_speed:
-            speed = self.arm_max_linear_speed
-        #Limit acceleration to max value
-        if accel > self.arm_max_linear_accel:
-            accel = self.arm_max_linear_accel
-        
-        if isinstance(target, np.ndarray):
-            target = target.tolist()
-        movement = ("movel({0}, a={1}, v={2})".format(target,accel,speed) + "\n").encode()
-        self.move(movement,stop_condition)
         return True
     
     
