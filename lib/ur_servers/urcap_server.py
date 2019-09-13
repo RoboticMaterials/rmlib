@@ -37,7 +37,7 @@ def set_robot_ip(newaddr):
 	import os
 	from rm_config import rm_config
 	oldaddr=rm_config['robot_arm']['ip_address']
-	os.system("sed -i -e 's/'" + oldaddr +"'\\b/'"+newaddr+"'/g' /home/nvidia/rmstudio/lib/rm_config.py")
+	os.system("sed -i -e 's/'" + oldaddr +"'\\b/'"+newaddr+"'/g' "+rm_config['rmstudio_path']+"lib/rm_config.py")
 	print("Replaced " + oldaddr + " with " + newaddr + " in rm_config")
 	return True
 
@@ -47,7 +47,7 @@ def init():
     try:
        urcap_kernel
     except:
-       urcap_kernel=subprocess.Popen(['python3','ur_servers/run_urcap_kernel.py'])
+       urcap_kernel=subprocess.Popen(['python3','run_urcap_kernel.py'])
        time.sleep(0.5)
     return True
     
@@ -55,7 +55,6 @@ def stop():
 	urcap_kernel.terminate()
 	global quit
 	quit=1
-#	sys.exit("Stop request from user")
 	return True
 
 # def listToPose(l):

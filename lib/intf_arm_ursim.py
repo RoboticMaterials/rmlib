@@ -6,70 +6,76 @@ import time
 import numpy as np
 import math
 
+
 class URSIM:
     def __init__(self):
+        self.tcp = np.subtract(np.divide(np.random.rand(6), 5), 0.1)
+        self.jas = np.subtract(np.multiply(np.random.rand(6), 2*np.pi), np.pi)
         return True
-    
+
     def dummy_stop(self):
-        return False 
-    
+        return False
+
     def get_tcp_pose_vec(self):
         """ 
         Gives the tcp position of the effector.
-        
+
         Return
         ------
         tcp_pose: [6,] list
             The pose of the effector.\n
             [x, y, z, rX, rY, rZ]
-        
+
         """
-        return [0,0,0,0,0,0]
-    
+        self.tcp += np.subtract(np.random.rand(6), 0.5)
+        return self.tcp
+
     def get_tcp_pose(self):
         """ 
         Gives the tcp position of the effector.
-        
+
         Return
         ------
         tcp_pose: [6,] list
             The pose of the effector.\n
             [x, y, z, rX, rY, rZ]
-        
+
         """
-        return self.pose_vec_to_mtrx(self.get_tcp_pose_vec())
-    
+        self.tcp += np.subtract(np.random.rand(6), 0.5)
+        return self.pose_vec_to_mtrx(self.tcp)
+
     def get_tcp_force(self):
         """
         Gets the 6-axis force magnitudes on the tcp.
-        
+
         Return
         ------
         tcp_force: [6,] list
             The force on the effector.\n
             [nx, ny, nz, rx, ry, rz]
-        
+
         """
-        return [0,0,0,0,0,0]
-    
+        return [0, 0, 0, 0, 0, 0]
+
     def get_joint_angles(self):
         """ 
         Get the configuration of the robot in joint space.
-        
+
         Return
         ------
         joint angles: [6,] list
             The radian angles of each joint. \n
             [base, shoulder, elbow, wrist_1, wrist_2, wrist_3]
-        
+
         """
-        return [0,0,0,0,0,0]
-           
-    def movej(self,target,speed=None,accel=None,speed_per=None,accel_per=None,frame="base",stop_condition='dummy'):
+        self.jas += np.divide(np.subtract(np.random.rand(6), 0.5), 20)
+        return self.jas
+
+    def movej(self, target, speed=None, accel=None, speed_per=None, accel_per=None, frame="base", stop_condition='dummy'):
         """ 
         Move the arm to the target pose in linear joint space. Note: if no speed or acceleration is set \
         The robot will move at the default speed and acceleration, set in rm_config.
-        
+
         Parameters
         ----------
         target: [6,] list
@@ -91,18 +97,18 @@ class URSIM:
         stop_condition: function (optional)
             The condition that would cause the movement to hault. \n
             Example: stop_condition = lambda: rm.get_tcp_force()[2] < -4
-            
+
         Return
         ------
         1
         """
         return True
-    
-    def movel(self,target,speed=None,accel=None,speed_per=None,accel_per=None,frame="base",stop_condition='dummy'):
+
+    def movel(self, target, speed=None, accel=None, speed_per=None, accel_per=None, frame="base", stop_condition='dummy'):
         """ 
         Move the arm in a linear tcp space to the target pose. Note: if no speed or acceleration is set \
         The robot will move at the default speed and acceleration, set in rm_config.
-        
+
         Parameters
         ----------
         target: [6,] list
@@ -124,18 +130,18 @@ class URSIM:
         stop_condition: function (optional)
             The condition that would cause the movement to hault. \n
             Example: stop_condition = lambda: rm.get_tcp_force()[2] < -4
-            
+
         Return
         ------
         1
         """
-        
+
         return True
-    
-    def movep(self,target,speed=None,accel=None,speed_per=None,accel_per=None,radius=0.0,frame="base",stop_condition=dummy_stop):
+
+    def movep(self, target, speed=None, accel=None, speed_per=None, accel_per=None, radius=0.0, frame="base", stop_condition=dummy_stop):
         """ Move the tool linearly with constant speed with circular blends. Note: if no speed or acceleration is set \
         The robot will move at the default speed and acceleration, set in rm_config.
-        
+
         Parameters
         ----------
         target: [6,] list
@@ -157,19 +163,19 @@ class URSIM:
         stop_condition: function (optional)
             The condition that would cause the movement to hault. \n
             Example: stop_condition = lambda: rm.get_tcp_force()[2] < -4
-            
+
         Return
         ------
         1
         """
 
         return True
-    
-    def set_joint_angles(self,target,speed=None,accel=None,speed_per=None,accel_per=None,stop_condition='dummy'):
+
+    def set_joint_angles(self, target, speed=None, accel=None, speed_per=None, accel_per=None, stop_condition='dummy'):
         """ 
         Move the arm in linear joint space to the target joint angles. Note: if no speed or acceleration is set \
         The robot will move at the default speed and acceleration, set in rm_config.
-        
+
         Parameters
         ----------
         target: [6,] list
@@ -186,18 +192,18 @@ class URSIM:
         stop_condition: function (optional)
             The condition that would cause the movement to hault. \n
             Example: stop_condition = lambda: rm.get_tcp_force()[2] < -4
-            
+
         Return
         ------
         1
         """
         return True
-    
-    def set_joint_angles_l(self,target,speed=None,accel=None,speed_per=None,accel_per=None,stop_condition='dummy'):
+
+    def set_joint_angles_l(self, target, speed=None, accel=None, speed_per=None, accel_per=None, stop_condition='dummy'):
         """ 
         Move the arm in linear tool space to the target joint angles. Note: if no speed or acceleration is set \
         The robot will move at the default speed and acceleration, set in rm_config.
-        
+
         Parameters
         ----------
         target: [6,] list
@@ -214,15 +220,10 @@ class URSIM:
         stop_condition: function (optional)
             The condition that would cause the movement to hault. \n
             Example: stop_condition = lambda: rm.get_tcp_force()[2] < -4
-            
+
         Return
         ------
         1
         """
-        
-        return True
-    
-    
 
-        
-        
+        return True

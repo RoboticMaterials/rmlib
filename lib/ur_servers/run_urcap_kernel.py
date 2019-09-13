@@ -1,5 +1,7 @@
-import rmlib
+import sys
+import os.path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 
+import rmlib
 rm = rmlib.RMLib()
-rm.feature_lib_file_name = 'urcap_feature_lib.json'
 rm.run_xmlrpc()

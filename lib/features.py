@@ -3,348 +3,430 @@ import math
 import json
 import os
 import shutil
+from rm_config import rm_config
+import cv2
+import matplotlib.pyplot as plt
 
-class Features:    
-    def load_feature_lib(self, file_name = None):
-        if file_name == None: file_name = self.feature_lib_file_name    
+
+class Features:
+    def load_feature_lib(self, file_name=None):
+        file_name = rm_config['rmstudio_path']+'lib/jupyter_feature_lib.json'
         with open(file_name, 'r') as fp:
             return json.load(fp)
-    
-    def save_feature_lib(self, feature_lib, file_name = None):
-        if file_name == None: file_name = self.feature_lib_file_name 
+
+    def save_feature_lib(self, feature_lib, file_name=None):
+        if file_name == None:
+            file_name = rm_config['rmstudio_path'] + \
+                'lib/jupyter_feature_lib.json'
         with open(file_name, 'w') as fp:
             json.dump(feature_lib, fp)
         return True
-    
+
     def print_feature_lib(self, feature_lib):
         print('Library Features:')
         for item1 in sorted(feature_lib):
             print(item1+":")
             for item2 in sorted(feature_lib[item1]):
                 if item2 == 'capture_process_list':
-                    print('      ',item2,':')
+                    print('      ', item2, ':')
                     for i, item3 in enumerate(feature_lib[item1][item2]):
-                        print('      ','      ',i,':')
+                        print('      ', '      ', i, ':')
                         for item4 in sorted(item3):
-                            print('      ','      ',item4,' = ',feature_lib[item1][item2][i][item4])
-                else: 
-                    print('      ',item2,' = ',feature_lib[item1][item2])
-    
-    def find_feature(self, capture, feature, output=None):
+                            print('      ', '      ', item4, ' = ',
+                                  feature_lib[item1][item2][i][item4])
+                else:
+                    print('      ', item2, ' = ', feature_lib[item1][item2])
+
+    def find_feature(self, feature, output=[None], rtn_capture=False):
         """
         Finds features
 
         Returns
         -------
-        List of locations corresponding to all features found that met criteria specifide in feature.
+        List of locations corresponding to all features found that meet criteria specified in feature.
         """
-
-        # Run Process List
-        for item in feature['capture_process_list']:
-            #Downsample
-            if item['descriptor'] == 'downsample':  
-                capture['cloud_ds'] = self.downsample_cloud(capture['cloud_raw'], leaf_size=item['leaf_size'])
-
-            #Segment dbscan
-            if item['descriptor'] == 'dbscan':
-                capture['clouds_seg'] = self.segment_cloud_dbscan(capture['cloud_ds'], search_radius=item['search_radius'], min_samples=item['min_samples'], output=None)
-                
-            #Segment nbscan
-            if item['descriptor'] == 'nbscan':
-                capture['clouds_seg'] = self.segment_cloud_nbscan(capture['cloud_ds'], curve_threshold=item['curve_threshold'], angle_threshold=item['angle_threshold'], k = item['k'], output=None)
-                
-            #Filter By Size
-            if item['descriptor'] == 'filter_by_size':
-                print(0)
-                capture['clouds_fil'] = self.filter_clouds_size(capture['clouds_seg'], dim_1=item['x_axis'], dim_2=item['y_axis'], dim_3=item['z_axis'], 
-                                                                                      cluster_size=item['cluster_size'], max_clouds_returned=item['max_clouds_returned'], output=None)
-                print(1)
-                capture['pose_list'] = self.get_cloud_pose(capture['clouds_fil'])
-                print(2)
-                
-        return capture['pose_list'], capture['clouds_fil'], capture['cloud_ds'] 
-
-    def filter_clouds_size(self, clouds, dim_1=[0,100], dim_2=[0,100], dim_3=[0,100], cluster_size = [10,10000000], max_clouds_returned=1000, output=None):
-        accepted_clouds = []
-        feature_pose_list = []
-        for test_cloud in clouds:
-            if len(accepted_clouds) < max_clouds_returned:
-                add_cloud = False
-                length = len(test_cloud)
-                if length > cluster_size[0] and length < cluster_size[1]: 
-                    dims = self.get_cloud_dimensions(test_cloud)
-                    if dim_1[0] < dims[0] < dim_1[1]:
-                        if dim_2[0] < dims[1] < dim_2[1]: add_cloud = True
-                        if dim_3[0] < dims[1] < dim_3[1]: add_cloud = True
-                    if dim_2[0] < dims[0] < dim_2[1]:
-                        if dim_1[0] < dims[1] < dim_1[1]: add_cloud = True
-                        if dim_3[0] < dims[1] < dim_3[1]: add_cloud = True
-                    if dim_3[0] < dims[0] < dim_3[1]:
-                        if dim_1[0] < dims[1] < dim_1[1]: add_cloud = True
-                        if dim_2[0] < dims[1] < dim_2[1]: add_cloud = True
-                                 
-                if add_cloud:
-                    if output == 'all':
-                        print('long_axis:',sorted(dims)[0],' short_axis:',sorted(dims)[1])
-                    accepted_clouds.append(test_cloud)
-                    
-            else:
-                break
-
-        if accepted_clouds is None:
-            raise Exception("No clouds passed through filter")
-
-        if output == 'all':
-            # View clouds
-            print('Filter Clouds Output:')
-            view = self.PC_Viewer()
-            for i in accepted_clouds:
-                view.add_cloud(i,colorize=True)
-            view.show(view='base')
-            
-        return accepted_clouds
-
-
-
-    def get_view_dimensions(self, view_distance):
-        camera_z_offset = -self.tcp_to_camera_pose[2,3]
-        distance_to_camera = view_distance + camera_z_offset
-        m_per_p = self.get_pixels_per_meter(distance_to_camera)
-        view_height = 720/m_per_p
-        view_width = 1280/m_per_p
-        return view_width, view_height 
-
-
-    def generate_views(self, method, pose, view_distance=None, x_dim=None, y_dim=None, dim_tol=0.2, output=None):      
-        view_pose_matrix = np.zeros((1,1,1,4,4))
-        if method == 'fixed':
-            #Generates a fixed view point at the given trans
-            view_pose_matrix[0,0,0,:] = pose.copy()
-        
-        if method == 'single':
-            #Generates a single view point above the feature trans
-            view_pose = pose.copy()
-            view_pose = self.translate_pose(view_pose, x=-self.tcp_to_camera_pose[0,3], y=-self.tcp_to_camera_pose[1,3], z=-view_distance, frame='self')  
-            view_pose_matrix[0,0,0,:] = view_pose
-
-        if method == 'cartesian':
-            #Generates view points based on the rectangle dimensions and the field of view
-            if x_dim is None or y_dim is None:
-                raise Exception("Parameters x_dim and y_dim are required for this method") 
-
-            #Get View Dimensions
-            view_dims = self.get_view_dimensions(view_distance)
-
-            # Add Tol to Bin Dims
-            x_dim = x_dim*(1+dim_tol)
-            y_dim = y_dim*(1+dim_tol)
-
-            # Get Number of View Points
-            x_points = math.ceil(x_dim/view_dims[0])
-            y_points = math.ceil(y_dim/view_dims[1])
-
-            # Calc Spacing
-            if x_points > 1: x_range = np.linspace(0, -x_dim+view_dims[0], x_points)
-            else: x_range = 0
-            if y_points > 1: y_range = np.linspace(0, y_dim-view_dims[1], y_points)
-            else: y_range = 0
-                
-
-            # Generate Start pose
-            start_pose = pose
-            if x_points > 1:start_pose = self.translate_pose(start_pose,x=(x_dim-view_dims[0])/2,frame='self')
-            if y_points > 1:start_pose = self.translate_pose(start_pose,y=-(y_dim-view_dims[1])/2,frame='self')
-
-            start_pose = self.generate_views('single',start_pose, view_distance=view_distance)[0,0,0,:]
-
-            # Generate pose Matrix   
-            view_pose_matrix = self.cartesian_mtrx_of_poses(start_pose, x_range, y_range, [0], frame='tool', output=None)
-
-        if method == 'cylindrical':
-            # Generates one to many view points based on the rectangle dimensions and the field of view
-            if x_dim is None or y_dim is None:
-                raise Exception("Parameters x_dim and y_dim are required for this method")
-
-            #Get View Dimensions
-            view_dims = self.get_view_dimensions(view_distance)
-
-            # Add Tol to Bin Dims
-            x_dim = x_dim*(1+dim_tol)
-            y_dim = y_dim*1
-
-            # Calc FOV
-            view_angle = 2*math.degrees(math.atan((x_dim/2)/view_distance))
-
-            # Get Number of View Points
-            camera_view_angle = 100
-            axis_points = math.ceil(y_dim/view_dims[1])
-            theta_points = math.ceil(view_angle/camera_view_angle)
-
-            # Calc Spacing
-            if axis_points > 1: axis_range = np.linspace(0,y_dim-view_dims[1],axis_points) 
-            else: axis_range = 0
-            if theta_points > 1: theta_range = np.linspace(0,view_angle-camera_view_angle,theta_points)
-            else: theta_range = 0
-
-            # Generate Start pose
-            start_pose = self.translate_pose(pose, y=-(y_dim-view_dims[1])/2, z=-view_distance, frame='self')
-            start_pose = self.rotate_pose(start_pose,ry=-math.radians((view_angle-camera_view_angle)/2), frame='self')
-            # Generate pose Matrix        
-            view_pose_matrix = self.cylindircal_mtrx_of_poses(start_pose, [0], theta_range, axis_range, frame='tool', cylinder_axis='y', output=None)
-        
-        
-            shape = view_pose_matrix.shape
-            for z in range(shape[0]):
-                for y in range(shape[1]):
-                    for x in range(shape[2]):
-                        view_pose_matrix[z,y,x,:] = self.translate_pose(view_pose_matrix[z,y,x,:],x=-self.tcp_to_camera_pose[0,3],y=-self.tcp_to_camera_pose[1,3])
-
-        return view_pose_matrix
-        #TODO add mehtods: 
-        #3) add convex search pattern to get better views of objects
-
-    def get_feature_capture(self, feature, view_method = 'fixed', search_location = None, view_tol=0.2, output=None):
         capture = {}
-        capture['cloud_raw'] = None
-        capture['image_raw'] = None
-        capture['depth_raw'] = None
-        
-        #accept vec search location from rm_wizard
-        if(type(search_location)==list and len(search_location) == 6):
-            search_location = self.pose_vec_to_mtrx(search_location)
-        
-        # Set pose
-        if type(search_location) == dict:
-            pose = self.pose_vec_to_mtrx(search_location['pose'])     
-        elif type(search_location) == list:
-            pose = search_location
+        capture['grasp_list'] = []
+
+        # Check process list for needed capture data: color_image, cloud, depth_image, etc.
+        need_color_image = False
+        need_cloud = False
+        if 'save_to_file' in output:
+            save_to_file = True
         else:
-            pose = self.get_tcp_pose()
-            
-        # Set outer_dimensions
-        if type(search_location) == dict:
-            x_dim=search_location['outer_dimensions'][0]
-            y_dim=search_location['outer_dimensions'][1]
-        else:
-            x_dim=feature['outer_dimensions'][0]
-            y_dim=feature['outer_dimensions'][1]
-        
-        # Set view_distance
-        view_distance = feature['view_distance']
-        
-        # Generate Views
-        views = self.generate_views(view_method, pose, view_distance=view_distance, x_dim=x_dim, y_dim=y_dim, dim_tol=view_tol)
-        cloud_raw = []
-        self.set_disparity_shift(feature['disparity_shift'])
-        
-        #TODO add code to set lambda function to cature cloud, depth image, image
-        self.set_laser_state(True)
-        if view_method == 'fixed':
-            cloud_raw.append(self.transform_points(self.get_point_cloud(), self.get_base_to_camera_pose()))
-        else:
-            self.move_through_mtrx_of_poses(views, lambda:cloud_raw.append(self.transform_points(self.get_point_cloud(), self.get_base_to_camera_pose())),
-                                      method='123', path='optimal', speed_per=None)
-        self.set_laser_state(False)
-        cloud_raw = np.vstack(cloud_raw)
-        
-        if output in ['all']:
-            # View clouds
-            print('Get Feature Cloud Output:')
-            cloud_ds = self.downsample_cloud(cloud_raw, leaf_size=0.003)
-            view = self.PC_Viewer()
-            view.add_axis(self.get_base_to_camera_pose())
-            view.add_axis(self.get_tcp_pose())
-            view.add_cloud(cloud_ds)
-            view.show(view='base')
-            
-        if output == 'gui':
-#           save locally
-            self.capture = {}
-            self.capture['cloud_raw'] = cloud_raw
-#           save to file
-            view = self.PC_Viewer()
-            cloud_ds = self.downsample_cloud(cloud_raw, leaf_size=0.003)
-            view.add_cloud(cloud_ds)
-            view.saveToFile(view='base')
-            return True
-        else:
-            capture['cloud_raw'] = cloud_raw
+            save_to_file = False
+
+        # List of color image descriptors
+        color_image_descriptors = ['center_circle']
+        # List of depth image descriptors
+        depth_image_descriptors = []
+        # List of cloud descriptors
+        cloud_descriptors = ['downsample',
+                             'dbscan', 'nbscan', 'filter_by_size']
+
+        for item in feature['capture_process_list']:
+            if item['descriptor'] in color_image_descriptors:
+                need_color_image = True
+            if item['descriptor'] in cloud_descriptors:
+                need_cloud = True
+
+        # Get capture
+        self.set_laser_power(1)  # temp
+        self.set_laser_state(0)  # temp
+        if need_color_image:
+            capture['color_image'] = self.get_color_image()
+            if 'c' in output or 'all' in output:
+                view_ci = self.CI_Viewer()
+                view_ci.add_image(capture['color_image'])
+                if save_to_file:
+                    view_ci.save_to_file()
+                else:
+                    print('Capture Color Image Output:')
+                    view_ci.show()
+
+        if need_cloud:
+            self.set_disparity_shift_dist(feature['view_distance'])
+            capture['c'] = self.get_cloud()
+            if 'c' in output or 'all' in output:
+                view_pc = self.PC_Viewer()
+                view_pc.add_cloud(self.downsample_cloud(capture['c']))
+                if save_to_file:
+                    view_pc.save_to_file()
+                else:
+                    print('Capture Cloud Output:')
+                    view_pc.show()
+
+        # Run process list
+        for i, item in enumerate(feature['capture_process_list']):
+            # Set step id
+            step_id = str(i)
+
+            # Set output
+            if step_id in output or 'all' in output:
+                output_item = True
+            else:
+                output_item = False
+
+            # Downsample
+            if item['descriptor'] == 'downsample':
+                # Set input key
+                if 'input_key_1' in item.keys():
+                    input_key_1 = item['input_key_1']
+                elif i == 0:
+                    input_key_1 = 'c'
+                else:
+                    input_key_1 = str(i-1)
+
+                capture[step_id] = self.downsample_cloud(
+                    capture[input_key_1], leaf_size=item['leaf_size'])
+
+            # Segment dbscan
+            if item['descriptor'] == 'dbscan':
+                # Set input key
+                if 'input_key_1' in item.keys():
+                    input_key_1 = item['input_key_1']
+                elif i == 0:
+                    input_key_1 = 'c'
+                else:
+                    input_key_1 = str(i-1)
+
+                # Set Outputs
+                if output_item:
+                    dbscan_output = ['all']
+                    if save_to_file:
+                        dbscan_output.append('save_to_file')
+                else:
+                    dbscan_output = [None]
+                capture[step_id] = self.segment_cloud_dbscan(capture[input_key_1],
+                                                             search_radius=item['search_radius'],
+                                                             min_samples=item['min_samples'], output=dbscan_output)
+
+            # Segment nbscan
+            if item['descriptor'] == 'nbscan':
+                # Set input key
+                if 'input_key_1' in item.keys():
+                    input_key_1 = item['input_key_1']
+                elif i == 0:
+                    input_key_1 = 'c'
+                else:
+                    input_key_1 = str(i-1)
+
+                # Set Outputs
+                if output_item:
+                    nbscan_output = ['final']
+                    if save_to_file:
+                        nbscan_output.append('save_to_file')
+                else:
+                    output_nbscan = [None]
+                capture[step_id] = self.segment_cloud_nbscan(capture[input_key_1],
+                                                             curve_threshold=item['curve_threshold'],
+                                                             angle_threshold=item['angle_threshold'],
+                                                             k=item['k'], output=nbscan_output)
+
+            # Filter by size
+            if item['descriptor'] == 'filter_by_size':
+                # Set input key
+                if 'input_key_1' in item.keys():
+                    input_key_1 = item['input_key_1']
+                elif i == 0:
+                    input_key_1 = 'c'
+                else:
+                    input_key_1 = str(i-1)
+
+                # Set Outputs
+                if output_item:
+                    filter_by_size_output = ['final', 'all']
+                    if save_to_file:
+                        filter_by_size_output.append('save_to_file')
+                else:
+                    filter_by_size_output = [None]
+                capture[step_id] = self.filter_clouds_size(capture[input_key_1],
+                                                           dim_1=item['x_axis'], dim_2=item['y_axis'], dim_3=item['z_axis'],
+                                                           cluster_size=item['cluster_size'],
+                                                           max_clouds_returned=item['max_clouds_returned'], output=filter_by_size_output)
+
+            # Center circle
+            if item['descriptor'] == 'center_circle':
+                # Set outputs
+                if output_item:
+                    center_circle_output = ['all']
+                    if save_to_file:
+                        center_circle_output.append('save_to_file')
+                else:
+                    center_circle_output = [None]
+                circle_found = self.center_circle(feature['view_distance'], min_dist_px=item['min_dist_px'], param_1=item['param_1'], param_2=item['param_2'],
+                                                  min_rad_px=item['min_rad_px'], max_rad_px=item['max_rad_px'], blur=item['blur'],
+                                                  search_radius_px=item['search_radius_px'], output=center_circle_output)
+                if circle_found:
+                    current_tcp_pose = self.get_tcp_pose()
+                    circPose = self.translate_pose(current_tcp_pose,
+                                                   x=self.tcp_to_ci_cam_pose[0, 3],
+                                                   y=self.tcp_to_ci_cam_pose[1, 3],
+                                                   z=feature['view_distance'],
+                                                   frame='self')
+                    # Add to capture grasp list
+                    capture['grasp_list'].append([circPose, None])
+                else:
+                    print('No Circles Found')
+
+            # Remove plane
+            if item['descriptor'] == 'remove_plane':
+                # Set input key
+                if 'input_key_1' in item.keys():
+                    input_key_1 = item['input_key_1']
+                elif i == 0:
+                    input_key_1 = 'c'
+                else:
+                    input_key_1 = str(i-1)
+
+                capture[step_id] = self.remove_planar_surface(
+                    capture[input_key_1], item['plane_tol'], rmv_high=True, rmv_low=False)
+
+            # Sort clouds size
+            if item['descriptor'] == 'sort_clouds_size':
+                # Set input key
+                if 'input_key_1' in item.keys():
+                    input_key_1 = item['input_key_1']
+                elif i == 0:
+                    input_key_1 = 'c'
+                else:
+                    input_key_1 = str(i-1)
+
+                capture[step_id] = self.sort_clouds_size(
+                    capture[input_key_1], large_to_small=item['large_to_small'])
+
+            # Sort clouds height
+            if item['descriptor'] == 'sort_clouds_height':
+                # Set input key
+                if 'input_key_1' in item.keys():
+                    input_key_1 = item[input_key_1]
+                elif i == 0:
+                    input_key_1 = 'c'
+                else:
+                    input_key_1 = str(i-1)
+
+                capture[step_id] = self.sort_clouds_height(
+                    capture[input_key_1], high_to_low=item['high_to_low'])
+
+            # Sort clouds distance
+            if item['descriptor'] == 'sort_clouds_distance':
+                # Set input key
+                if 'input_key_1' in item.keys():
+                    input_key_1 = item['input_key_1']
+                elif i == 0:
+                    input_key_1 = 'c'
+                else:
+                    input_key_1 = str(i-1)
+
+                capture[step_id] = self.sort_clouds_distance(
+                    capture[input_key_1], self.origin_pose(), close_to_far=item['close_to_far'])
+
+            # Find Grasp
+            if item['descriptor'] == 'find_grasp':
+                # Set input key 1
+                if 'input_key_1' in item.keys():
+                    input_key_1 = item['input_key_1']
+                elif i == 0:
+                    input_key_1 = 'c'
+                else:
+                    input_key_1 = str(i-1)
+
+                # Set input key 2
+                if 'input_key_2' in item.keys():
+                    input_key_2 = item['input_key_2']
+                elif i == 0:
+                    input_key_2 = '0'
+                else:
+                    input_key_2 = '0'
+
+                # Set rotate
+                if 'rotate_z' in item.keys():
+                    rotate_z = item['rotate_z']
+                else:
+                    rotate_z = True
+
+                # Set outputs
+                if output_item:
+                    find_grasp_output = ['final']
+                    if save_to_file:
+                        find_grasp_output.append('save_to_file')
+                else:
+                    find_grasp_output = None
+
+                # Check if input cloud is empty
+                if len(capture[input_key_1]) == 0:
+                    continue
+
+                # Check if input of clouds has poses
+                if not isinstance(capture[input_key_1][0], (list, tuple)):
+                    pose_list = self.get_cloud_pose(capture[input_key_1])
+
+                    # Zip clouds and poses
+                    clouds_and_poses = zip(capture[input_key_1], pose_list)
+
+                else:
+                    clouds_and_poses = capture[input_key_1]
+
+                grasp_pose, width, object_pose = self.find_grasp(
+                    clouds_and_poses, capture[input_key_2], rotate_z=rotate_z, output=find_grasp_output)
+
+                if grasp_pose is not None:
+                    grasp_pose = self.get_base_to_camera_pose(
+                        cam='pc').dot(grasp_pose)
+                    object_pose = self.get_base_to_camera_pose(
+                        cam='pc').dot(object_pose)
+
+                    # Add grasp_pose to capture grasp list
+                    capture['grasp_list'].append([grasp_pose, width])
+
+                    # Add object_pose to capture grasp list
+                    capture['grasp_list'].append([object_pose, None])
+
+            # Find Pose
+            if item['descriptor'] == 'find_pose':
+                # Set input key
+                if 'input_key_1' in item.keys():
+                    input_key_1 = item['input_key_1']
+                elif i == 0:
+                    input_key_1 = 'c'
+                else:
+                    input_key_1 = str(i-1)
+
+                # Set rotate
+                if 'rotate_z' in item.keys():
+                    rotate_z = item['rotate_z']
+                else:
+                    rotate_z = True
+
+                if len(capture[input_key_1]) >= 1:
+                    pose = self.get_cloud_pose(capture[input_key_1][0])
+                    if output_item:
+                        view = self.PC_Viewer()
+                        view.add_cloud(capture[input_key_1][0], colorize=True)
+                        view.add_axis(pose)
+                        view.show()
+
+                    pose = self.get_base_to_camera_pose(cam='pc').dot(pose)
+                    if not rotate_z:
+                        pose = self.combine_poses(
+                            rot_pose=self.get_tcp_pose(), trans_pose=pose)
+                else:
+                    pose = None
+
+                # Add to capture grasp list
+                capture['grasp_list'].append([pose, None])
+
+        # Return full capture
+        if rtn_capture:
             return capture
-            
-    def wizard_segment_cloud(self,feature, cloud_name):
-        self.capture['cloud_ds'] = self.downsample_cloud(self.capture[cloud_name], leaf_size=feature['capture_process_list'][0]['leaf_size'])
-        if feature['capture_process_list'][1]['descriptor'] == 'dbscan':      
-            self.capture['clouds_seg'] = self.segment_cloud_dbscan(self.capture['cloud_ds'], 
-                                                                   search_radius=feature['capture_process_list'][1]['search_radius'], 
-                                                                   min_samples=feature['capture_process_list'][1]['min_samples'], 
-                                                                   output=None)
-             
-        if feature['capture_process_list'][1]['descriptor'] == 'nbscan':
-            self.capture['clouds_seg'] = self.segment_cloud_nbscan(self.capture['cloud_ds'], 
-                                                                   curve_threshold=feature['capture_process_list'][1]['curve_threshold'], 
-                                                                   angle_threshold=feature['capture_process_list'][1]['angle_threshold'],
-                                                                   k = feature['capture_process_list'][1]['k'], 
-                                                                   output=None)  
-        view = self.PC_Viewer()
-        view.add_cloud(self.capture['cloud_ds'])
-        for i in self.capture['clouds_seg']:
-            view.add_cloud(i,colorize=True)
-        view.saveToFile(view='base')
-        return True
-    
-    def wizard_filter_clouds_size(self,feature):
-        print(1)
-        accepted_clouds = self.filter_clouds_size(self.capture['clouds_seg'], 
-                                                                     dim_1=feature['capture_process_list'][2]['x_axis'], 
-                                                                     dim_2=feature['capture_process_list'][2]['y_axis'], 
-                                                                     dim_3=feature['capture_process_list'][2]['z_axis'], 
-                                                                     cluster_size=feature['capture_process_list'][2]['cluster_size'], 
-                                                                     max_clouds_returned=feature['capture_process_list'][2]['max_clouds_returned'], 
-                                                                     output=None)
-        object_pose_list = self.get_cloud_pose(accepted_clouds)
-        view = self.PC_Viewer()
-        view.add_cloud(self.capture['cloud_ds'])
-        for i in accepted_clouds:
-            view.add_cloud(i,colorize=True)
-        for i in object_pose_list:
-            view.add_axis(i)
-        view.saveToFile(view='base')
-        return True 
-    
-    def wizard_set_view_cloud(self, cloud_name):
-        cloud = self.downsample_cloud(self.capture[cloud_name],leaf_size=0.0025)
-        view = self.PC_Viewer()
-        view.add_cloud(cloud)
-        view.saveToFile(view='base')
-        return True
-        
-    
-    def wizard_remove_planar_surface(self, rmv_plane_tol):
-        self.capture['cloud_pr']  = self.remove_planar_surface(self.capture['cloud_raw'],rmv_tolerance=rmv_plane_tol, rmv_high=False, rmv_low=True)
-        self.wizard_set_view_cloud('cloud_pr')
-        return True
-    
-    def wizard_remove_container(self, container):
-        self.capture['cloud_cr']  = self.crop_to_inner_dims(self.capture['cloud_raw'],container)
-        self.wizard_set_view_cloud('cloud_cr')
-        return True
-        
-    def update_point_cloud(self):
-        self.set_disparity_shift(100)
-        cloud = self.get_point_cloud()
-        cloud = self.downsample_cloud(cloud,leaf_size=0.0025)
+        # Return capture grasp list
+        else:
+            return capture['grasp_list']
 
-        clr = np.zeros(cloud.shape)
-        color = np.random.randint(0,255,3)
-        clr[:] = color
-        cloud = np.hstack((cloud,clr))
-                
-#         clr = np.zeros(cloud.shape) + 255
-#         cloud = np.hstack((cloud,clr))
+    def find_grasp(self, clouds_and_poses, cloud_full, rotate_z=True, output=None):
+        # Find the first cloud within the grippers width and not on fov edge
+        cloud_sel = None
+        trans_sel = None
+        grasp_pose = None
+        for item in clouds_and_poses:
+            cloud = item[0]
+            pose = item[1]
+            if not rotate_z:
+                pose = self.combine_poses(
+                    rot_pose=self.get_tcp_pose(), trans_pose=pose)
+            cloud_sel_width = self.get_cloud_width(cloud, pose)
+            if cloud_sel_width < 0.1 and not self.is_cloud_on_fov_edge(item[0], tolerance=20):
+                cloud_sel = cloud
+                trans_sel = pose
+                grasp_pose = self.align_pose_to_tcp(trans_sel, frame='tool')
+                grasp_pose = self.shift_pose_to_grasp(
+                    cloud_full, grasp_pose, cloud_sel_width, step_size=0.0005, min_clearance=0.004)
+                if grasp_pose is not None:
+                    break
 
-        cloud_df = pd.DataFrame((cloud), columns = ['x','y','z','red','green','blue'])
+        # If no clouds are within the grippers width
+        if grasp_pose is None:
+            return None, None, None
 
-        cloud_pc = PyntCloud(cloud_df)
-        cloud_pc.to_file("/home/nvidia/dev_rmstudio/lib/html/feature_wizard/models/point_cloud.ply")
-        return True
-    
+        if output != None and ('final' in output or 'all' in output):
+            view = self.PC_Viewer()
+            view.add_cloud(cloud_full)
+            view.add_cloud(cloud_sel, colorize=True)
+            view.add_axis(grasp_pose)
+            boxes, fboxes = self.get_gripper_boxes(grasp_pose, cloud_sel_width)
+            view.add_gripper_boxes(boxes, fboxes)
+            if 'save_to_file' in output:
+                view.save_to_file()
+            else:
+                view.show()
+        grasp_width = cloud_sel_width*1.5
+
+        return grasp_pose, grasp_width, trans_sel
+
+    def hough_circles_feature(self, holeFeature, output=False):
+        """ Return all the circles that match the description in `featureDict` """
+
+        ir_image = self.get_color_image()
+        ir_image = cv2.cvtColor(ir_image.copy(), cv2.COLOR_BGR2GRAY)
+        ir_image = cv2.medianBlur(
+            ir_image, holeFeature['capture_process_list'][0]['blur'])
+
+        circles = cv2.HoughCircles(ir_image, cv2.HOUGH_GRADIENT, 1,
+                                   minDist=holeFeature['capture_process_list'][0]['min_dist_px'],
+                                   param1=holeFeature['capture_process_list'][0]['param_1'],
+                                   param2=holeFeature['capture_process_list'][0]['param_2'],
+                                   minRadius=holeFeature['capture_process_list'][0]['min_rad_px'],
+                                   maxRadius=holeFeature['capture_process_list'][0]['max_rad_px'])
+
+        if output:
+            # Find center circle
+            circles = np.uint16(np.around(circles))
+            circleimage = ir_image.copy()
+            chosen_circle = None
+            for circle in circles[0]:
+                # Add circle to image
+                cv2.circle(
+                    circleimage, (circle[0], circle[1]), circle[2], (255, 255, 255), 5)
+
+            plt.figure(figsize=(20, 20))
+            plt.imshow(circleimage, vmin=0, vmax=150, cmap='gist_gray')

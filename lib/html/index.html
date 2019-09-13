@@ -2,16 +2,54 @@
 <head>
 </head>
 
-<body>
-    <ul>
-        <li>
-            <a href="rm_dashboard/pages/feature_wizard/index.html">Feature editor</a>
-        </li>
-        <li>
-            <script type="text/javascript">
-            document.write('<a href="' + `http://${window.location.hostname}:8888` + '">RM Studio</a>');
-            </script>
-        </li>
-    </ul>
+<style>
+  .grid {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    display: grid;
+    grid-template-columns: 50% 50%;
+    grid-template-rows: 100%;
+  }
+
+  #link-dashboard {
+      font-family: "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, "Lucida Grande", sans-serif;
+      font-size: 2vw;
+      text-decoration: none;
+      text-align: center;
+      height: 100%;
+      background-color: #c7383f;
+      color: #151515;
+      display: table-cell;
+      vertical-align: middle;
+      text-align: center;
+  }
+
+  #link-studio {
+      font-family: "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, "Lucida Grande", sans-serif;
+      font-size: 2vw;
+      text-decoration: none;
+      text-align: center;
+      height: 100%;
+      background-color: #151515;
+      color: #c7383f;
+      display: table-cell;
+      vertical-align: middle;
+      text-align: center;
+  }
+</style>
+<!--     
+<body style="position:fixed; height: 100%; width: 100%; background: cyan;">
+    </body> -->
+
+<body style="display: table; table-layout:fixed;">
+
+    <div class="grid">
+        <div style="display: table; height:100%;">  <a id="link-dashboard" >RM Dashboard<br>(Coming Soon)</a></div>
+        <div style="display: table; height:100%;"><script>document.write('<a id="link-studio" href="' + `http://${window.location.hostname}:8888` + '">RM Lab</a>');</script></div>
+    <div>
+
 </body>
 </html>
